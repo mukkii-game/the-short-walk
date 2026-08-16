@@ -416,10 +416,13 @@
     /* START の瞬間のズレを基点に、そこから少しずつ離れていく。
      * 古い値を使うと号令の直後に全員が一斉に飛ぶ */
     if (w.devBase === null) w.devBase = w.devHold;
-    /* 最初の一歩まで（と歩き出す前）は規定速度のまま流す */
+    /* まだ一歩も踏んでいない者は、惰性でわずかに流れたあと止まる。
+     * ここを「規定速度で流す」にすると、何も押さない＝完璧な歩行になってしまう。
+     * 歩かない者は置いていかれる。それがこのゲームの全てなので、ここは絶対に守る */
     if (w.steps === 0) {
-      w.devHold = w.devBase;
-      return w.baseX + w.devBase + reg;
+      var coast = Math.min(reg - anchor, stepDist * 0.6);
+      w.devHold = w.devBase + coast - (reg - anchor);
+      return w.baseX + w.devBase + anchor + coast;
     }
     /* 歩数だけで位置を決めると一歩(約0.6m)刻みに量子化されてしまうので、
      * 直近の歩調から次の一歩までの進みぶんを補間して連続量にする */
