@@ -304,7 +304,9 @@
   function beginVerdict(t) {
     lasers = [];
     verdictDone = -1;
-    var victims = W.markVictims(R.limit);
+    /* 最低でも下位1/4は消える。終盤は1人ずつ */
+    var quota = Math.max(1, Math.floor(W.aliveCount() / 4));
+    var victims = W.markVictims(R.limit, quota);
     for (var i = 0; i < victims.length; i++) {
       lasers.push({ w: victims[i], at: t + 1.1 + i * LASER_GAP, hit: false });
     }

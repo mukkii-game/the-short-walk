@@ -74,17 +74,25 @@ function mkNpc(){
  * 生き残りのズレは次の提示中に列へ戻る（＝毎ラウンドほぼリセット） */
 function run(pp, trace){
   let npcs = []; for (let i = 0; i < SW.START_COUNT-1; i++) npcs.push(mkNpc());
+  npcs[npcs.length-1] = { type:'elite', sigma0:0.022, bias:0.0025, patErr:0.003, dropRate:0.001, panicBase:0.018 };
+  npcs[npcs.length-2] = { type:'steady', sigma0:0.028, bias:0.005, patErr:0.006, dropRate:0.002, panicBase:0.022 };
   const pl = Object.assign({}, pp);
   for (let idx = 0; idx < ROUNDS.length; idx++) {
     const R = ROUNDS[idx];
     const limit = SW.limitFor(idx);
     const correct = SPEED * (R.tEnd - R.tEcho);
     const devP = walkOf(pl, R) - correct;
-    const devs = npcs.map(w => walkOf(w, R) - correct);
+    const all = npcs.map((w,i) => ({w, d: Math.abs(walkOf(w, R) - correct)}));
+    all.push({w: pl, d: Math.abs(devP)});
+    all.sort((a,b) => b.d - a.d);
+    const quota = Math.max(1, Math.floor(all.length / 4));
+    let cut = all.filter((x,i) => x.d > limit || i < quota);
+    if (cut.length >= all.length) cut = cut.slice(0, all.length - 1);
+    const cutSet = new Set(cut.map(x => x.w));
     const before = npcs.length;
-    npcs = npcs.filter((w, i) => Math.abs(devs[i]) <= limit);
-    if (trace) trace.push(`R${idx+1} 自分${devP.toFixed(2)}m 枠±${limit.toFixed(2)} NPC死${before-npcs.length} 残${npcs.length+1}`);
-    if (Math.abs(devP) > limit) return idx;
+    npcs = npcs.filter(w => !cutSet.has(w));
+    if (trace) trace.push(`R${idx+1} 自分${devP.toFixed(2)}m 枠±${limit.toFixed(2)} 死${cut.length} 残${all.length-cut.length}`);
+    if (cutSet.has(pl)) return idx;
     if (npcs.length === 0) return ROUNDS.length;
   }
   return ROUNDS.length;

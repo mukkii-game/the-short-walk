@@ -101,5 +101,5 @@
 
   /* 規定位置からこれ以上離れた者は、無音の間に随時処理される。
    * 一歩ぶん(約0.6m)の踏み外し2回でほぼ死ぬ距離。ラウンドが進むと狭まる */
-  SW.limitFor = function (idx) { return Math.max(0.95, 2.6 - idx * 0.18); };
+  SW.limitFor = function (idx) { return Math.max(0.85, 2.6 - idx * 0.20); };
 })(window);

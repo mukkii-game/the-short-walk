@@ -138,6 +138,18 @@
 
     for (i = 1; i < n; i++) W.walkers.push(makeWalker(ids[i], false));
 
+    /* 精鋭を必ず2人仕込む。ペースメーカーにほぼ合わせ切る者と、それに近い者。
+     * ランダムに任せると全員凡庸な回ができてしまい、
+     * 「最後の二人」の勝負（かなり正確でないと勝てない）が成立しない。 */
+    var elite = W.walkers[W.walkers.length - 1];
+    elite.type = 'elite'; elite.tier = 11;
+    elite.sigma0 = 0.022; elite.bias = (Math.random() < 0.5 ? -1 : 1) * 0.0025;
+    elite.patErr = 0.003; elite.dropRate = 0.001; elite.panicBase = 0.018;
+    var second = W.walkers[W.walkers.length - 2];
+    second.type = 'steady'; second.tier = 9;
+    second.sigma0 = 0.028; second.bias = (Math.random() < 0.5 ? -1 : 1) * 0.005;
+    second.patErr = 0.006; second.dropRate = 0.002; second.panicBase = 0.022;
+
     /* 先導者（ペースメーカー） */
     var pc = makeWalker(0, false);
     pc.isPacer = true;
@@ -193,14 +205,26 @@
 
   /* 無音の間、規定位置から limit を超えて離れた者をその場で処理する。
    * 判定はこれだけ。ジャッジタイムも集計もない。 */
-  /* 枠の外にいる者を数え上げる（まだ殺さない）。奥から手前の順 */
-  W.markVictims = function (limit) {
-    var out = [];
-    for (var i = 0; i < W.walkers.length; i++) {
-      var w = W.walkers[i];
-      if (!w.alive) continue;
-      if (Math.abs(w.devHold) > limit) out.push(w);
+  /* 処刑対象を選ぶ（まだ殺さない）。
+   *
+   * 規則は二段構え:
+   *   1. 枠(limit)の外にいる者は全員
+   *   2. それが足りなくても、成績下位 quota 名は必ず処理される
+   * 誰もズレていなくても淘汰は止まらない。これはそういう行進である。
+   * 返す順は奥から手前（レーザーが奥から順に落ちる）。 */
+  W.markVictims = function (limit, quota) {
+    var alive = [], out = [], i, w;
+    for (i = 0; i < W.walkers.length; i++) {
+      w = W.walkers[i];
+      if (w.alive) alive.push(w);
     }
+    /* ズレの大きい順 */
+    alive.sort(function (a, b) { return Math.abs(b.devHold) - Math.abs(a.devHold); });
+    for (i = 0; i < alive.length; i++) {
+      if (Math.abs(alive[i].devHold) > limit || out.length < (quota || 0)) out.push(alive[i]);
+    }
+    /* 最後の一人は殺さない（勝者が残る） */
+    if (out.length >= alive.length) out = out.slice(0, alive.length - 1);
     out.sort(function (a, b) { return a.laneF - b.laneF; });
     return out;
   };
@@ -261,7 +285,7 @@
     w.stepCount = 0; w.steps = 0;
     w.pace = R.phraseDur / R.pattern.length;
     w.countFrom = R.countFrom;
-    w.devBase = w.devHold;   /* 前のラウンドまでに溜めたズレを持ち越す */
+    w.devBase = null;        /* START の瞬間の実ズレで確定させる（提示中の復帰を反映） */
     w.lastStepT = -9; w.prevStepT = -9; w.parity = 0; w.warned = 0;
     w.score = 0; w.res = null;
     /* w.x はリセットしない。ラウンドをまたいで歩き続けるため */
@@ -298,11 +322,7 @@
     var panic = w.panicBase * (1 + R.idx * 0.15);
     var span = Math.max(0.001, R.tEnd - R.tGo);
     var wanderSigma = w.sigma0 * 0.085;
-    /* 溜まったズレを取り返そうとする度合い。
-     * 手本の間に先導者との差を見て歩調を変える、という行動のモデル。
-     * これが無いと全員がただ流されて死に、実力差が出ない。 */
-    var corr = -w.recover * w.devBase / Math.max(0.5, SPEED * (R.tEnd - R.tGo));
-    var tempo = 1 + w.bias + corr;
+    var tempo = 1 + w.bias;
     var wander = 0;
     var phase = R.tGo;
     var endT = R.tEnd + R.phraseDur * 5;
@@ -381,13 +401,18 @@
       if (t < R.tCount) w.devHold += (0 - w.devHold) * Math.min(1, (dt || 0.016) * 0.9);
       return w.baseX + w.devHold + reg;
     }
-    /* 歩数だけで位置を決めると、位置が一歩ぶん(約0.6m)刻みに量子化されてしまい、
-     * 「わずかに速い」が一歩ぶん飛ぶまで一切見えない。
-     * 直近の歩調から次の一歩までの進みぶんを補間して、連続量にする。 */
+    /* START の瞬間のズレを基点に、そこから少しずつ離れていく。
+     * 古い値を使うと号令の直後に全員が一斉に飛ぶ */
+    if (w.devBase === null) w.devBase = w.devHold;
+    /* 最初の一歩まで（と歩き出す前）は規定速度のまま流す */
+    if (w.steps === 0) {
+      w.devHold = w.devBase;
+      return w.baseX + w.devBase + reg;
+    }
+    /* 歩数だけで位置を決めると一歩(約0.6m)刻みに量子化されてしまうので、
+     * 直近の歩調から次の一歩までの進みぶんを補間して連続量にする */
     var frac = U.clamp((t - w.lastStepT) / w.pace, 0, 1.25);
-    if (w.steps === 0) frac = 0;
     var target = w.baseX + w.devBase + anchor + (w.steps - 1 + frac) * stepDist;
-    if (w.steps === 0) target = w.baseX + w.devBase + anchor;
     w.devHold = target - w.baseX - reg;
     return target;
   }

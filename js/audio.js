@@ -132,6 +132,14 @@
     },
 
     ok: function () { return ready; },
+
+    /* 録画用: ゲーム音声を MediaStream として取り出す */
+    tapStream: function () {
+      if (!ready) return null;
+      var msd = ctx.createMediaStreamDestination();
+      master.connect(msd);
+      return msd.stream;
+    },
     now: function () { return ready ? ctx.currentTime : 0; },
     ctx: function () { return ctx; },
 
