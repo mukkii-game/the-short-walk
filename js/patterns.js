@@ -17,7 +17,9 @@
   'use strict';
   var SW = global.SW || (global.SW = {});
 
-  SW.WALK_SPEED = 1.1111;   /* 4 km/h = 1.1111 m/s */
+  /* 行進の速度。歩幅を大きくして、ズレが見た目にはっきり出るようにしている。
+   * 判定は順位制なのでこの値はバランスに影響しない。純粋に絵の派手さの調整弁 */
+  SW.WALK_SPEED = 1.85;
 
   SW.rounds = [
     { /* 1 */

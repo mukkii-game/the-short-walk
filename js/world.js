@@ -55,11 +55,11 @@
    * 平均は合っているのに刻みが暴れる者、そして完全に見失った者。
    * プレイヤーが「誰を見て合わせるか」を選べるのは、この差があるから。 */
   var TYPES = [
-    { key: 'steady',  w: 26, bias: 0.22, sign: 0, jitter: 0.75, recover: 0.75, label: 'ほとんどズレない' },
-    { key: 'rush',    w: 24, bias: 1.35, sign: 1, jitter: 1.00, recover: 0.50, label: '少しずつ前に出る' },
-    { key: 'drag',    w: 24, bias: 1.35, sign: -1, jitter: 1.00, recover: 0.50, label: '少しずつ落ちる' },
-    { key: 'erratic', w: 18, bias: 0.30, sign: 0, jitter: 1.75, recover: 0.55, label: '刻みが暴れる' },
-    { key: 'lost',    w: 8, bias: 2.20, sign: 0, jitter: 2.10, recover: 0.05, label: '見失っている' }
+    { key: 'steady',  w: 26, bias: 0.22, sign: 0, jitter: 0.75, recover: 0.75, sway: 0.5, label: 'ほとんどズレない' },
+    { key: 'rush',    w: 24, bias: 1.35, sign: 1, jitter: 1.00, recover: 0.50, sway: 1.0, label: '少しずつ前に出る' },
+    { key: 'drag',    w: 24, bias: 1.35, sign: -1, jitter: 1.00, recover: 0.50, sway: 1.0, label: '少しずつ落ちる' },
+    { key: 'erratic', w: 18, bias: 0.30, sign: 0, jitter: 1.75, recover: 0.55, sway: 0.9, label: '刻みが暴れる' },
+    { key: 'lost',    w: 8, bias: 2.20, sign: 0, jitter: 2.10, recover: 0.05, sway: 1.4, label: '見失っている' }
   ];
   var TYPE_TOTAL = 0;
   for (var ti = 0; ti < TYPES.length; ti++) TYPE_TOTAL += TYPES[ti].w;
@@ -92,6 +92,7 @@
       dropRate: U.clamp(NPC.d1 - NPC.dSlope * (r - 1), 0.002, 0.30),           /* 踏み外す率 */
       panicBase: U.clamp(NPC.k1 - NPC.kSlope * (r - 1), 0.018, 0.40),          /* 無音中のσ増大率 (/秒) */
       recover: ty.recover,                                                      /* ズレを取り返す度合い */
+      sway: ty.sway,                                                            /* 群衆の流れに乗ってしまう度合い */
       /* 体格の個体差。群衆が金太郎飴に見えないようにする */
       hMul: 0.92 + Math.random() * 0.15,
       bMul: 0.88 + Math.random() * 0.28,
@@ -144,11 +145,11 @@
     var elite = W.walkers[W.walkers.length - 1];
     elite.type = 'elite'; elite.tier = 11;
     elite.sigma0 = 0.022; elite.bias = (Math.random() < 0.5 ? -1 : 1) * 0.0025;
-    elite.patErr = 0.003; elite.dropRate = 0.001; elite.panicBase = 0.018;
+    elite.patErr = 0.003; elite.dropRate = 0.001; elite.panicBase = 0.018; elite.sway = 0.15;
     var second = W.walkers[W.walkers.length - 2];
     second.type = 'steady'; second.tier = 9;
     second.sigma0 = 0.028; second.bias = (Math.random() < 0.5 ? -1 : 1) * 0.005;
-    second.patErr = 0.006; second.dropRate = 0.002; second.panicBase = 0.022;
+    second.patErr = 0.006; second.dropRate = 0.002; second.panicBase = 0.022; second.sway = 0.3;
 
     /* 先導者（ペースメーカー） */
     var pc = makeWalker(0, false);
@@ -254,6 +255,16 @@
   /* R: {t0, tEcho, tBlack, tEnd, bpm, barDur, pattern, slotsEcho[], slotsBlack[], idx} */
   W.beginRound = function (R) {
     var i;
+
+    /* 群衆全体の流れ。
+     * 個々のズレを対称に配ると「群衆の真ん中＝正解」になってしまう。
+     * ラウンドごとに全員へ同じ向きのバイアスをかけ、
+     * 全員遅れがちな回・全員走りがちな回を作る。真ん中は信用できない。 */
+    if (Math.random() < 0.45) {
+      R.crowdBias = U.gauss(0, 0.004);                                 /* ほぼ流れなし */
+    } else {
+      R.crowdBias = (Math.random() < 0.5 ? -1 : 1) * U.rand(0.008, 0.022);  /* 一方向に流れる */
+    }
     /* 位置に反映する歩数を数え始める時刻。
      * 提示フェーズの歩数まで数えると、追従の開始と同時に
      * 提示フェーズぶんの距離を一気に前に飛んでしまう（先導者が特にそうなる）。
@@ -322,7 +333,8 @@
     var panic = w.panicBase * (1 + R.idx * 0.15);
     var span = Math.max(0.001, R.tEnd - R.tGo);
     var wanderSigma = w.sigma0 * 0.085;
-    var tempo = 1 + w.bias;
+    /* 流されやすさは個性による。腕のいい者ほど流れに乗らない */
+    var tempo = 1 + w.bias + (R.crowdBias || 0) * (w.sway == null ? 1 : w.sway);
     var wander = 0;
     var phase = R.tGo;
     var endT = R.tEnd + R.phraseDur * 5;
