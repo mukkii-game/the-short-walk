@@ -1,0 +1,221 @@
+/* Short Walk - UI
+ *
+ * 柱C: リズムゲームに見えないこと。譜面もノーツも判定表示も画面に出さない。
+ * 出すのは「残り人数」「課題番号」「いま何をする時間か」の3つだけ。
+ * 照合の結果も、何人脱落して何人残ったかしか言わない。
+ */
+
+:root {
+  --ink: #e8e4d8;
+  --dim: #9a9384;
+  --panel: rgba(12, 13, 17, 0.92);
+  --line: #3a3a44;
+  --accent: #d9c98f;
+
+  /* 明朝体。事務的な冷たさと、紙の書類めいた味を出すため。
+   * 日本語のWebフォントは数MBあり、この規模のゲームには重すぎるので
+   * OS標準の明朝を素直に使っている。 */
+  --serif: "Yu Mincho", "YuMincho", "游明朝", "Hiragino Mincho ProN",
+           "Hiragino Mincho Pro", "Noto Serif JP", "MS PMincho", serif;
+
+  /* タイトル用。無骨で詰まった大文字。ペーパーバックの表紙の顔 */
+  --slab: Impact, Haettenschweiler, "Arial Narrow Bold", "Arial Narrow",
+          "Franklin Gothic Heavy", "Yu Gothic UI", sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  width: 100%; height: 100%;
+  background: #0b0c10;
+  color: var(--ink);
+  font-family: var(--serif);
+  overflow: hidden;
+  -webkit-user-select: none; user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#stage {
+  position: fixed; inset: 0;
+  width: 100%; height: 100%;
+  display: block;
+  touch-action: none;
+}
+
+.hidden { display: none !important; }
+
+/* ---------- HUD ---------- */
+
+#hud {
+  position: fixed; inset: 0;
+  pointer-events: none;
+  font-feature-settings: "tnum" 1;
+}
+
+/* 残り人数。カタカナと数字だけ、でかく。 */
+.hud-count {
+  position: absolute; top: 3vh; left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-family: var(--slab);
+  font-size: clamp(30px, 6.5vw, 92px);
+  line-height: 1;
+  letter-spacing: 0.10em;
+  color: #f0ebdf;
+  text-shadow: 0 3px 26px rgba(0, 0, 0, 0.95);
+  font-feature-settings: "tnum" 1;
+}
+.hud-count b { font-weight: inherit; letter-spacing: 0.02em; }
+
+.hud-round {
+  position: absolute; top: 22px; left: 22px;
+  font-size: 13px; letter-spacing: 0.22em; color: var(--dim);
+}
+
+.hud-phase {
+  position: absolute; bottom: 26px; left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.95);
+}
+.hud-phase b {
+  display: block; font-size: 19px; font-weight: 400;
+  letter-spacing: 0.42em; text-indent: 0.42em; opacity: 0.85;
+}
+.hud-phase span {
+  display: block; font-size: 11.5px; color: var(--dim); margin-top: 5px;
+  letter-spacing: 0.12em;
+}
+
+/* ---------- 脱落数・残数の告知 ---------- */
+
+#toast {
+  position: fixed; top: 42%; left: 50%;
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+  font-family: var(--slab);
+  font-size: clamp(26px, 5.5vw, 76px);
+  letter-spacing: 0.12em;
+  color: var(--ink); opacity: 0;
+  transition: opacity .6s;
+  pointer-events: none;
+  text-shadow: 0 2px 20px #000, 0 0 40px rgba(0, 0, 0, 0.9);
+  font-feature-settings: "tnum" 1;
+}
+#toast.on { opacity: 0.92; }
+
+/* ---------- パネル ---------- */
+
+.panel {
+  position: fixed; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(6, 7, 10, 0.78);
+  backdrop-filter: blur(2px);
+  padding: 20px;
+  overflow: auto;
+}
+
+.sheet {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  padding: 30px 34px;
+  max-width: 620px; width: 100%;
+  box-shadow: 0 20px 80px rgba(0, 0, 0, 0.75);
+}
+.sheet.narrow { max-width: 400px; }
+.sheet.center { text-align: center; }
+
+h1 { font-size: 42px; font-weight: 500; letter-spacing: 0.3em; margin-bottom: 10px; }
+
+/* ---------- タイトル ---------- */
+
+.panel.title {
+  background: linear-gradient(180deg, rgba(6,7,10,0.86) 0%, rgba(6,7,10,0.55) 55%, rgba(6,7,10,0.90) 100%);
+  backdrop-filter: none;
+  align-items: flex-start;
+}
+.panel.title .sheet {
+  background: none; border: 0; box-shadow: none;
+  padding: 4vh 6vw; max-width: 900px;
+}
+
+.bigtitle {
+  font-family: var(--slab);
+  font-size: clamp(56px, 13vw, 152px);
+  line-height: 0.86;
+  letter-spacing: 0.005em;
+  font-weight: 400;
+  color: #f2ede1;
+  text-transform: uppercase;
+  text-shadow: 0 6px 40px rgba(0,0,0,0.9), 0 1px 0 rgba(0,0,0,0.6);
+  margin-bottom: 18px;
+}
+h2 { font-size: 19px; font-weight: 500; letter-spacing: 0.18em; margin-bottom: 14px; }
+
+.tag { color: var(--accent); letter-spacing: 0.14em; font-size: 14px; margin-bottom: 20px; }
+.lead { font-size: 15px; line-height: 2.3; color: #c9c3b6; margin-bottom: 22px; letter-spacing: 0.06em; }
+.lead.dim2 { font-size: 12.5px; color: #8a857a; margin-top: -10px; }
+.big { font-size: 20px; margin: 12px 0; font-feature-settings: "tnum" 1; }
+.foot { margin-top: 22px; font-size: 11px; color: #55524b; letter-spacing: 0.2em; }
+
+.btns { display: flex; gap: 10px; flex-wrap: wrap; }
+.btns.center { justify-content: center; }
+
+button {
+  font: inherit; font-size: 13px;
+  letter-spacing: 0.16em;
+  padding: 11px 22px;
+  color: var(--ink);
+  background: #191b22;
+  border: 1px solid var(--line);
+  cursor: pointer;
+  transition: background .15s, border-color .15s;
+}
+button:hover { background: #232630; border-color: #56566a; }
+button.primary { background: var(--accent); color: #14130e; border-color: var(--accent); }
+button.primary:hover { background: #e8dcaa; }
+
+.rules { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line); }
+.rules ul { margin-left: 18px; }
+.rules li { font-size: 12.5px; line-height: 2.1; color: #b9b4a8; }
+kbd {
+  background: #23252e; border: 1px solid #4a4a58; border-bottom-width: 2px;
+  padding: 1px 6px; font-size: 11px;
+  font-family: Consolas, "SF Mono", monospace;
+}
+
+/* 号令 3, 2, 1, START。一瞬で出て拍のうちに消える */
+#cue {
+  position: fixed; top: 34%; left: 50%;
+  transform: translate(-50%, -50%);
+  font-family: var(--slab);
+  font-size: clamp(64px, 14vw, 200px);
+  color: #f2ede1;
+  opacity: 0;
+  pointer-events: none;
+  text-shadow: 0 4px 40px rgba(0, 0, 0, 0.95);
+}
+#cue.on { animation: cuepop 0.5s ease-out; }
+@keyframes cuepop {
+  0% { opacity: 0.95; transform: translate(-50%, -50%) scale(1.0); }
+  70% { opacity: 0.85; transform: translate(-50%, -50%) scale(1.06); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.1); }
+}
+
+/* タイトル画面の隅のクレジット。地味に、しかし読めるように */
+.credits {
+  position: absolute;
+  right: 14px; bottom: 10px;
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: #55524b;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+  pointer-events: auto;
+}
+.credits a { color: #6b675e; text-decoration: none; border-bottom: 1px dotted #4a473f; }
+.credits a:hover { color: #96917f; }
+
+@media (max-width: 560px) {
+  h1 { font-size: 26px; }
+  .sheet { padding: 22px 20px; }
+}

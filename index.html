@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Short Walk</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<canvas id="stage"></canvas>
+
+<!-- HUD。出すのは残り人数と課題番号だけ -->
+<div id="hud" class="hidden">
+  <div id="count" class="hud-count"></div>
+  <div id="round" class="hud-round"></div>
+</div>
+
+<div id="toast"></div>
+<div id="cue"></div>
+
+<!-- タイトル -->
+<div id="panelTitle" class="panel title hidden">
+  <div class="sheet">
+    <h1 class="bigtitle">THE<br>SHORT<br>WALK</h1>
+    <p class="lead">
+      ペースメーカーが示す同じリズムとペースで歩け<br>
+      ペースメーカーが消えている間もだ<br>
+      ずれたものから消えていく
+    </p>
+    <p class="lead dim2">歩くのはどのボタンでもいい</p>
+    <div class="btns">
+      <button id="btnStart" class="primary">START</button>
+    </div>
+  </div>
+  <div class="credits">
+    sprites: <a href="https://lpc.opengameart.org/" target="_blank" rel="noopener">Liberated Pixel Cup</a> (CC-BY-SA 3.0)
+    ／ sfx: <a href="https://soundeffect-lab.info/" target="_blank" rel="noopener">効果音ラボ</a>
+  </div>
+</div>
+
+<!-- キャリブレーション -->
+<div id="panelCalib" class="panel hidden">
+  <div class="sheet narrow">
+    <h2>入力遅延の測定</h2>
+    <p id="calibMsg"></p>
+    <p id="calibVal" class="big"></p>
+  </div>
+</div>
+
+<!-- 終了 -->
+<div id="panelEnd" class="panel hidden">
+  <div class="sheet narrow center">
+    <h1 id="endTitle"></h1>
+    <p id="endLead" class="lead"></p>
+    <div class="btns center">
+      <button id="btnAgain" class="primary">RETRY</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/util.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/patterns.js"></script>
+<script src="js/world.js"></script>
+<script src="js/render.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>

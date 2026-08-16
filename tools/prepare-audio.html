@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>Short Walk — 音素材の加工</title>
+<style>
+  body { font-family: "Yu Gothic UI", system-ui, sans-serif; background: #14151a; color: #e8e4d8;
+         margin: 0; padding: 24px 28px; line-height: 1.7; }
+  h1 { font-size: 20px; letter-spacing: .1em; }
+  h2 { font-size: 14px; color: #9a9384; margin-top: 22px; font-weight: 400; letter-spacing: .1em; }
+  p, li { font-size: 13px; color: #c4bfb2; }
+  code { background: #21232b; padding: 1px 5px; border-radius: 3px; }
+  button { font: inherit; font-size: 13px; padding: 9px 18px; background: #ffd54a; color: #16150f;
+           border: 0; border-radius: 3px; cursor: pointer; font-weight: 700; }
+  button.sub { background: #1c1e26; color: #e8e4d8; border: 1px solid #3a3a44; font-weight: 400; }
+  table { border-collapse: collapse; width: 100%; margin-top: 12px; }
+  th, td { text-align: left; padding: 5px 8px; font-size: 12px; border-bottom: 1px solid #262832; }
+  th { color: #9a9384; font-weight: 400; }
+  td.n { text-align: right; font-variant-numeric: tabular-nums; }
+  .ok { color: #7ee2a8; } .ng { color: #ff7a68; }
+  a { color: #7fc7ff; }
+  audio { height: 26px; vertical-align: middle; }
+</style>
+</head>
+<body>
+
+<h1>Short Walk — 音素材の加工</h1>
+
+<p>
+  <code>.tmp/src/</code> に置いた元素材を、ゲームがそのまま使える形に加工して
+  <code>assets/sfx/</code> へ書き出します。やっていること:
+</p>
+<ul>
+  <li><b>先頭の無音を完全に削る</b> — これをやらないとリズムの基準が数十msずれます</li>
+  <li><b>足音を1歩ずつに切り出す</b> — 連続歩行の素材から個別の踏み込みを抽出</li>
+  <li><b>環境音をクロスフェードして継ぎ目のないループにする</b></li>
+  <li><b>音量を揃え、wav（16bit）で書き出す</b> — mp3のエンコード遅延を避けるため</li>
+</ul>
+
+<p>
+  保存には <code>node tools/savesrv.js</code> を起動しておいてください。
+  起動していない場合は下の表からダウンロードリンクで受け取れます。
+</p>
+
+<p>
+  <button id="run">加工して保存する</button>
+  <button id="rerun" class="sub">再実行</button>
+</p>
+
+<div id="out"></div>
+
+<script>
+'use strict';
+const SRC = '../.tmp/src/';
+const SAVE = 'http://localhost:8125/';
+let ctx = null;
+
+/* ---------- 汎用 ---------- */
+
+async function load(name) {
+  const r = await fetch(SRC + name);
+  if (!r.ok) throw new Error(name + ' が見つかりません (' + r.status + ')');
+  const ab = await r.arrayBuffer();
+  return await ctx.decodeAudioData(ab);
+}
+
+/* モノラルの Float32Array にまとめる */
+function mono(buf) {
+  const n = buf.length;
+  const out = new Float32Array(n);
+  for (let c = 0; c < buf.numberOfChannels; c++) {
+    const d = buf.getChannelData(c);
+    for (let i = 0; i < n; i++) out[i] += d[i];
+  }
+  const g = 1 / buf.numberOfChannels;
+  for (let i = 0; i < n; i++) out[i] *= g;
+  return out;
+}
+
+/* 短時間RMSの包絡。hop はサンプル数 */
+function envelope(d, hop) {
+  const n = Math.floor(d.length / hop);
+  const e = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    let s = 0;
+    for (let j = 0; j < hop; j++) { const v = d[i * hop + j]; s += v * v; }
+    e[i] = Math.sqrt(s / hop);
+  }
+  return e;
+}
+
+/* 立ち上がりの位置（サンプル番号）を返す */
+function onsets(d, sr, minGapSec, thresh) {
+  const hop = Math.floor(sr * 0.005);
+  const e = envelope(d, hop);
+  let peak = 0;
+  for (let i = 0; i < e.length; i++) if (e[i] > peak) peak = e[i];
+  const lim = peak * thresh;
+  const minGap = Math.floor(minGapSec / 0.005);
+  const res = [];
+  let last = -1e9;
+  for (let i = 1; i < e.length - 1; i++) {
+    if (e[i] < lim) continue;
+    if (e[i] <= e[i - 1]) continue;
+    if (i - last < minGap) continue;
+    /* 立ち上がりの足元まで戻る */
+    let k = i;
+    while (k > 0 && e[k - 1] < e[k] && e[k - 1] > lim * 0.12) k--;
+    res.push(k * hop);
+    last = i;
+  }
+  return res;
+}
+
+/* 先頭の無音を削る。閾値を超える最初の位置の 2ms 手前まで詰める */
+function trimHead(d, sr, thresh) {
+  let peak = 0;
+  for (let i = 0; i < d.length; i++) { const a = Math.abs(d[i]); if (a > peak) peak = a; }
+  const lim = peak * (thresh || 0.02);
+  let i = 0;
+  while (i < d.length && Math.abs(d[i]) < lim) i++;
+  const start = Math.max(0, i - Math.floor(sr * 0.002));
+  return d.subarray(start);
+}
+
+/* 知覚上のアタック位置に頭を合わせる。
+ * 生録音の足音は「ザッ」と立ち上がりが緩やかなので、単純な無音カットだと
+ * 実際に音として聞こえ始める瞬間が数十ms後ろにずれる。
+ * 2msの移動RMSがピークの一定割合を超える点を探し、その 3ms 手前を先頭にする。 */
+function alignAttack(d, sr, frac) {
+  const w = Math.max(1, Math.floor(sr * 0.002));
+  const e = envelope(d, w);
+  let peak = 0;
+  for (let i = 0; i < e.length; i++) if (e[i] > peak) peak = e[i];
+  const lim = peak * (frac || 0.20);
+  let i = 0;
+  while (i < e.length && e[i] < lim) i++;
+  const start = Math.max(0, i * w - Math.floor(sr * 0.003));
+  return d.slice(start);
+}
+
+/* 切り出した素材の、頭からアタックまでの時間(ms) */
+function attackMs(d, sr, frac) {
+  const w = Math.max(1, Math.floor(sr * 0.002));
+  const e = envelope(d, w);
+  let peak = 0;
+  for (let i = 0; i < e.length; i++) if (e[i] > peak) peak = e[i];
+  const lim = peak * (frac || 0.20);
+  let i = 0;
+  while (i < e.length && e[i] < lim) i++;
+  return i * w / sr * 1000;
+}
+
+function cut(d, sr, startSec, lenSec) {
+  const a = Math.floor(startSec * sr);
+  const b = Math.min(d.length, a + Math.floor(lenSec * sr));
+  return d.slice(a, b);
+}
+
+function fade(d, sr, inMs, outMs) {
+  const ni = Math.floor(sr * inMs / 1000);
+  const no = Math.floor(sr * outMs / 1000);
+  for (let i = 0; i < ni && i < d.length; i++) d[i] *= i / ni;
+  for (let i = 0; i < no && i < d.length; i++) {
+    d[d.length - 1 - i] *= i / no;
+  }
+  return d;
+}
+
+function normalize(d, target) {
+  let peak = 0;
+  for (let i = 0; i < d.length; i++) { const a = Math.abs(d[i]); if (a > peak) peak = a; }
+  if (peak < 1e-6) return d;
+  const g = (target || 0.92) / peak;
+  for (let i = 0; i < d.length; i++) d[i] *= g;
+  return d;
+}
+
+/* 実効音量(RMS)を揃える。ピーク基準だと、立ち上がりの鋭い音だけ小さく聞こえる */
+function rmsNormalize(d, target, peakLimit) {
+  let s2 = 0;
+  for (let i = 0; i < d.length; i++) s2 += d[i] * d[i];
+  const rms = Math.sqrt(s2 / d.length);
+  if (rms < 1e-6) return d;
+  let g = target / rms;
+  let peak = 0;
+  for (let i = 0; i < d.length; i++) { const a = Math.abs(d[i]); if (a > peak) peak = a; }
+  if (peak * g > (peakLimit || 0.95)) g = (peakLimit || 0.95) / peak;
+  for (let i = 0; i < d.length; i++) d[i] *= g;
+  return d;
+}
+
+/* 線形補間でサンプリングレートを落とす */
+function resample(d, srIn, srOut) {
+  if (srIn === srOut) return d;
+  const ratio = srIn / srOut;
+  const n = Math.floor(d.length / ratio);
+  const out = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const x = i * ratio;
+    const i0 = Math.floor(x);
+    const f = x - i0;
+    out[i] = d[i0] * (1 - f) + (d[Math.min(d.length - 1, i0 + 1)] || 0) * f;
+  }
+  return out;
+}
+
+/* 継ぎ目のないループを作る。
+ *
+ * 混ぜる向きが肝心。ループの「先頭」を、ループ終端の直後に続く音とクロスフェードする。
+ * こうすると out[0] が d[start+len] から始まるので、out[len-1] (= d[start+len-1]) の
+ * 続きとして自然につながる。逆向き（末尾に後続を混ぜる）にすると段差が残る。 */
+function loopify(d, sr, startSec, lenSec, xfadeSec) {
+  const start = Math.floor(startSec * sr);
+  const len = Math.floor(lenSec * sr);
+  const xf = Math.floor(xfadeSec * sr);
+  if (start + len + xf > d.length) throw new Error('素材が短すぎます');
+  const out = new Float32Array(len);
+  for (let i = 0; i < len; i++) out[i] = d[start + i];
+  for (let i = 0; i < xf; i++) {
+    const t = i / xf;
+    out[i] = d[start + len + i] * (1 - t) + out[i] * t;
+  }
+  return out;
+}
+
+/* 16bit PCM の wav に固める */
+function toWav(d, sr) {
+  const n = d.length;
+  const buf = new ArrayBuffer(44 + n * 2);
+  const v = new DataView(buf);
+  const str = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  str(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); str(8, 'WAVE');
+  str(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true);
+  v.setUint16(22, 1, true); v.setUint32(24, sr, true);
+  v.setUint32(28, sr * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  str(36, 'data'); v.setUint32(40, n * 2, true);
+  for (let i = 0; i < n; i++) {
+    let s = Math.max(-1, Math.min(1, d[i]));
+    v.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+  }
+  return buf;
+}
+
+function b64(ab) {
+  const u = new Uint8Array(ab);
+  let s = '';
+  for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+
+async function save(name, ab) {
+  try {
+    const r = await fetch(SAVE, {
+      method: 'POST',
+      body: JSON.stringify({ path: 'assets/sfx/' + name, b64: b64(ab) })
+    });
+    return r.ok ? 'saved' : 'NG ' + r.status;
+  } catch (e) { return 'サーバなし'; }
+}
+
+/* ---------- レシピ ---------- */
+
+async function build() {
+  const rows = [];
+  const add = async (name, data, sr, note) => {
+    const ab = toWav(data, sr);
+    const st = await save(name, ab);
+    rows.push({
+      name, sec: (data.length / sr).toFixed(2), kb: Math.round(ab.byteLength / 1024),
+      st, note, url: URL.createObjectURL(new Blob([ab], { type: 'audio/wav' }))
+    });
+    render(rows);
+  };
+
+  /* --- 足音: 砂利の連続歩行から1歩ずつ切り出す --- */
+  {
+    const b = await load('walk_gravel.mp3');
+    const sr = b.sampleRate;
+    const d = mono(b);
+    const on = onsets(d, sr, 0.28, 0.30);
+    if (on.length < 3) throw new Error('足音の立ち上がりを検出できません（' + on.length + '個）');
+
+    const grab = (p) => {
+      /* 検出位置は立ち上がりの手前に寄せてあるので、切り出したあとで
+       * もう一度きっちり頭を合わせる。ここを怠ると、その足音だけ十数ms遅れて鳴る。 */
+      let seg = d.slice(Math.max(0, p - Math.floor(sr * 0.03)), p + Math.floor(sr * 0.32));
+      seg = alignAttack(seg, sr, 0.22).slice(0, Math.floor(sr * 0.26));
+      return rmsNormalize(fade(Float32Array.from(seg), sr, 0.8, 90), 0.065, 0.97);
+    };
+
+    /* 実録の足音には、擦る音が先に来てから本体が鳴るテイクが混ざっている。
+     * そういうテイクを選ぶと、その足音だけ体感で遅れる。
+     * 全テイクを切り出して、頭からアタックまでが短いものだけを候補にする。 */
+    const cands = [];
+    for (let i = 1; i < on.length - 1; i++) {
+      const seg = grab(on[i]);
+      const a = attackMs(seg, sr, 0.20);
+      cands.push({ i: i, seg: seg, a: a });
+    }
+    cands.sort(function (x, y) { return x.a - y.a; });
+    const good = cands.filter(function (c) { return c.a <= 8; });
+    const use = good.length >= 2 ? good : cands;
+    /* 遠いテイク同士を選んで、左右で音が違うようにする */
+    let A = use[0], B = use[1];
+    for (let i = 1; i < use.length; i++) {
+      if (Math.abs(use[i].i - A.i) >= 2) { B = use[i]; break; }
+    }
+    await add('step_r.wav', A.seg, sr, '砂利の上を歩く（アタック ' + A.a.toFixed(0) + 'ms）');
+    await add('step_l.wav', B.seg, sr, '砂利の上を歩く（別テイク・アタック ' + B.a.toFixed(0) + 'ms）');
+  }
+
+  /* --- 着地 --- */
+  {
+    const b = await load('step_into.mp3');
+    const sr = b.sampleRate;
+    let d = alignAttack(mono(b), sr, 0.22);
+    d = rmsNormalize(fade(cut(d, sr, 0, 0.42), sr, 0.8, 120), 0.085, 0.97);
+    await add('step_jump.wav', d, sr, '踏み込み（着地に流用）');
+  }
+
+  /* --- 風のループ --- */
+  {
+    const b = await load('wind1.mp3');
+    const sr = b.sampleRate;
+    const d = mono(b);
+    let loop = loopify(d, sr, 12, 18, 3.0);
+    loop = normalize(loop, 0.75);
+    const low = resample(loop, sr, 22050);
+    await add('wind_loop.wav', low, 22050, '風が吹く1 / 18秒・継ぎ目クロスフェード・22kHz');
+  }
+
+  /* --- 照合開始の汽笛 --- */
+  {
+    const b = await load('ship_whistle.mp3');
+    const sr = b.sampleRate;
+    let d = trimHead(mono(b), sr, 0.02);
+    d = normalize(fade(cut(d, sr, 0, 2.6), sr, 5, 400), 0.85);
+    await add('horn.wav', resample(d, sr, 22050), 22050, '大型船の汽笛（遠距離）');
+  }
+
+  /* --- 警告 --- */
+  {
+    const b = await load('siren.mp3');
+    const sr = b.sampleRate;
+    let d = trimHead(mono(b), sr, 0.03);
+    d = normalize(fade(cut(d, sr, 0, 1.1), sr, 5, 220), 0.8);
+    await add('warn.wav', resample(d, sr, 22050), 22050, '基地サイレン（頭1.1秒）');
+  }
+
+  /* --- 走査ビーム --- */
+  {
+    const b = await load('beam.mp3');
+    const sr = b.sampleRate;
+    let d = trimHead(mono(b), sr, 0.03);
+    d = normalize(fade(cut(d, sr, 0, 1.4), sr, 3, 300), 0.8);
+    await add('beam.wav', d, sr, 'ビーム砲3');
+  }
+
+  /* --- 処理音（1体ぶん。軽く短く） --- */
+  {
+    const b = await load('beamshot.mp3');
+    const sr = b.sampleRate;
+    let d = trimHead(mono(b), sr, 0.05);
+    d = normalize(fade(cut(d, sr, 0, 0.22), sr, 1, 80), 0.55);
+    await add('zap.wav', d, sr, 'ビームガン（短く切り、音量を落とす）');
+  }
+
+  /* --- 照合の重み --- */
+  {
+    const b = await load('thud.mp3');
+    const sr = b.sampleRate;
+    let d = alignAttack(mono(b), sr, 0.20);
+    d = normalize(fade(cut(d, sr, 0, 0.9), sr, 1, 250), 0.85);
+    await add('thud.wav', resample(d, sr, 22050), 22050, '重いキック（照合の一撃）');
+  }
+
+  /* --- UI。安いピコ音を避け、低く短い一音にする --- */
+  {
+    const b = await load('ui_low.mp3');
+    const sr = b.sampleRate;
+    let d = alignAttack(mono(b), sr, 0.15);
+    d = normalize(fade(cut(d, sr, 0, 0.55), sr, 1, 180), 0.55);
+    await add('ui.wav', resample(d, sr, 22050), 22050, 'メニュー（重低音）');
+  }
+
+  /* --- 敗北。驚かせず、長く響かせる --- */
+  {
+    const b = await load('temple_bell.mp3');
+    const sr = b.sampleRate;
+    let d = alignAttack(mono(b), sr, 0.12);
+    d = normalize(fade(cut(d, sr, 0, 6.0), sr, 2, 1200), 0.8);
+    await add('dead.wav', resample(d, sr, 22050), 22050, 'お寺の鐘（脱落）');
+  }
+
+  /* --- 完歩 --- */
+  {
+    const b = await load('church_bell.mp3');
+    const sr = b.sampleRate;
+    let d = alignAttack(mono(b), sr, 0.12);
+    d = normalize(fade(cut(d, sr, 0, 6.0), sr, 2, 1200), 0.8);
+    await add('fanfare.wav', resample(d, sr, 22050), 22050, '教会の鐘（完歩）');
+  }
+}
+
+function render(rows) {
+  let h = '<h2>書き出し結果</h2><table><tr><th>ファイル</th><th>内容</th><th>長さ</th><th>サイズ</th><th>保存</th><th>試聴</th></tr>';
+  for (const r of rows) {
+    h += '<tr><td><code>' + r.name + '</code></td><td>' + r.note + '</td>' +
+      '<td class="n">' + r.sec + 's</td><td class="n">' + r.kb + ' KB</td>' +
+      '<td class="' + (r.st === 'saved' ? 'ok' : 'ng') + '">' + r.st + '</td>' +
+      '<td><audio controls src="' + r.url + '"></audio> ' +
+      '<a href="' + r.url + '" download="' + r.name + '">保存</a></td></tr>';
+  }
+  h += '</table>';
+  document.getElementById('out').innerHTML = h;
+}
+
+async function run() {
+  document.getElementById('out').innerHTML = '<p>加工中…</p>';
+  try {
+    ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
+    await ctx.resume();
+    await build();
+  } catch (e) {
+    document.getElementById('out').innerHTML = '<p class="ng">失敗: ' + e.message + '</p>';
+    console.error(e);
+  }
+}
+document.getElementById('run').addEventListener('click', run);
+document.getElementById('rerun').addEventListener('click', run);
+window.__run = run;
+</script>
+</body>
+</html>
