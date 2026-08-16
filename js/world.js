@@ -161,7 +161,7 @@
       W.walkers[i].baseX = 0; W.walkers[i].baseT = 0; W.walkers[i].x = 0;
     }
     pc.baseX = 0; pc.baseT = 0; pc.x = 0;
-    W.formLine();
+    W.formLine(true);
     W.sort();
     return W;
   };
@@ -185,22 +185,28 @@
   W.LANE_NEAR = 0.99;        /* 手前端（プレイヤー） */
   W.LANE_FAR = 0.16;         /* 奥端 */
 
-  W.formLine = function () {
+  /* 間隔は人数で割らず固定。人が減ると空いたぶんが詰められ、
+   * 生き残りは手前側に寄っていく。immediate=false なら現在地から滑らかに移動 */
+  W.LANE_GAP = (W.LANE_NEAR - W.LANE_FAR) / 12;
+
+  W.formLine = function (immediate) {
     var alive = [], others = [], i;
     for (i = 0; i < W.walkers.length; i++) if (W.walkers[i].alive) alive.push(W.walkers[i]);
     for (i = 0; i < alive.length; i++) if (!alive[i].isPlayer) others.push(alive[i]);
 
     var pl = W.player;
-    pl.laneT = W.LANE_NEAR; pl.laneF = W.LANE_NEAR;
+    pl.laneT = W.LANE_NEAR;
 
     /* 先導者はプレイヤーのすぐ奥、同じX */
-    var n = others.length + 2;
-    var gap = (W.LANE_NEAR - W.LANE_FAR) / Math.max(1, n - 1);
-    W.pacer.laneT = W.LANE_NEAR - gap; W.pacer.laneF = W.pacer.laneT;
+    W.pacer.laneT = W.LANE_NEAR - W.LANE_GAP;
 
     for (i = 0; i < others.length; i++) {
-      var lane = W.LANE_NEAR - gap * (i + 2);
-      others[i].laneT = lane; others[i].laneF = lane;
+      others[i].laneT = W.LANE_NEAR - W.LANE_GAP * (i + 2);
+    }
+    if (immediate) {
+      pl.laneF = pl.laneT;
+      W.pacer.laneF = W.pacer.laneT;
+      for (i = 0; i < others.length; i++) others[i].laneF = others[i].laneT;
     }
   };
 
@@ -387,12 +393,14 @@
       if (!w.isPlayer || t < R.tEcho || t >= R.tHold) advancePresses(w, t);
       target = stepTarget(w, R, t, reg, anchor, regEnd, stepDist, dt);
       w.x += (target - w.x) * smooth;
+      w.laneF += (w.laneT - w.laneF) * Math.min(1, dt * 1.1);
     }
 
     var pc = W.pacer;
     advancePresses(pc, t);
     target = stepTarget(pc, R, t, reg, anchor, regEnd, stepDist, dt);
     pc.x += (target - pc.x) * smooth;
+    pc.laneF += (pc.laneT - pc.laneF) * Math.min(1, dt * 1.1);
 
     W.regX = reg;
   };
@@ -424,12 +432,13 @@
       w.devHold = w.devBase + coast - (reg - anchor);
       return w.baseX + w.devBase + anchor + coast;
     }
-    /* 歩数だけで位置を決めると一歩(約0.6m)刻みに量子化されてしまうので、
-     * 直近の歩調から次の一歩までの進みぶんを補間して連続量にする */
+    /* 判定用のズレは補間した連続量で持つ（公平さのため）。
+     * ただし見た目の位置は「一歩＝きっかり一歩ぶん」に量子化する。
+     * 押した瞬間にその距離をパッと進む。歩幅と移動が一致して見えるように。
+     * 多少カクつくのは仕様で、update() 側の緩やかな追従で角を丸める */
     var frac = U.clamp((t - w.lastStepT) / w.pace, 0, 1.25);
-    var target = w.baseX + w.devBase + anchor + (w.steps - 1 + frac) * stepDist;
-    w.devHold = target - w.baseX - reg;
-    return target;
+    w.devHold = (w.devBase + (w.steps - 1 + frac) * stepDist) - (reg - anchor);
+    return w.baseX + w.devBase + anchor + (w.steps - 1) * stepDist + stepDist * 0.5;
   }
   function advancePresses(w, t) {
     while (w.pi < w.presses.length && w.presses[w.pi].t <= t) {

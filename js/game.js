@@ -29,6 +29,10 @@
   var roundEndAt = -1;
   var lasers = [];           /* 執行中のレーザー: {w, at} */
   var verdictDone = -1;
+  var zoomCur = 1;
+  var visMode = false;       /* 視認モード: 先導者が無音中も薄く見える */
+  var bubbles = [];          /* {w, text, until} */
+  var nextBubbleAt = 0;
 
   var TOTAL_ROUNDS = SW.rounds.length;
   var GRACE = 0.35;
@@ -292,6 +296,37 @@
     show('panelTitle');
   };
 
+  /* ---- 吹き出し ----
+   *
+   * NPCは時折ひとりごとを言う。人数が減るほど頻繁になる。
+   * 動きとは無関係。ただの、人間の声。 */
+  var LINES = [
+    'こわいよ…', 'おそいかな', 'あうう', 'きみ、なまえは？',
+    'しにたくないよ', 'もうだめかも', 'あしがいたい', 'かえりたい',
+    'ねむい…', 'まだいける', 'ごめんなさい', 'ここどこ…',
+    'みずのみたい', 'だれかいる？', 'ちゃんとあるけてる？', 'おいていかないで'
+  ];
+
+  function bubbleTick(t) {
+    for (var i = bubbles.length - 1; i >= 0; i--) {
+      if (t > bubbles[i].until || !bubbles[i].w.alive) bubbles.splice(i, 1);
+    }
+    if (t < nextBubbleAt) return;
+    var pool = [];
+    for (i = 0; i < W.walkers.length; i++) {
+      var w = W.walkers[i];
+      if (w.alive && !w.isPlayer) pool.push(w);
+    }
+    if (!pool.length) return;
+    var n = W.aliveCount();
+    /* 残りが少ないほど間隔が詰まる */
+    var lo = n <= 3 ? 1.6 : (n <= 5 ? 2.4 : 4.5);
+    var hi = n <= 3 ? 3.6 : (n <= 5 ? 5.5 : 9.0);
+    nextBubbleAt = t + U.rand(lo, hi);
+    var w2 = pool[Math.floor(Math.random() * pool.length)];
+    bubbles.push({ w: w2, text: U.pick(LINES), until: t + 2.4 });
+  }
+
   /* ---- 判決・終了 ----
    *
    * 無音が終わるとペースメーカーが現れ、少し間を置いてから、
@@ -400,10 +435,20 @@
           } else {
             toast('ノコリ ' + W.aliveCount() + ' メイ', 1800);
             roundIdx++;
+            W.formLine(false);   /* 空いたぶんを詰めて手前へ */
+            W.sort();
             startRound();
           }
         }
       }
+
+      bubbleTick(t);
+
+      /* 人数が減るほどカメラが寄る。最後の二人はかなり大きい */
+      var n = Math.max(2, W.aliveCount());
+      var zTarget = U.clamp(1 + (12 - n) * 0.065, 1, 1.65);
+      zoomCur += (zTarget - zoomCur) * Math.min(1, dt * 1.2);
+      R2.setZoom(zoomCur);
 
       camX += (W.player.x - camX) * Math.min(1, dt * 3.5);
       R2.setCam(camX);
@@ -425,8 +470,9 @@
     R2.begin(dark);
     R2.drawMarks();
 
-    /* 先導者: 提示と判決で見え、号令で薄れ、無音で消える */
-    var pTarget = state === 'black' ? 0 : (state === 'count' ? 0.25 : 1);
+    /* 先導者: 提示と判決で見え、号令で薄れ、無音で消える。
+     * 視認モードでは無音中も薄い影として位置と動きが確認できる */
+    var pTarget = state === 'black' ? (visMode ? 0.22 : 0) : (state === 'count' ? 0.25 : 1);
     pacerAlpha += (pTarget - pacerAlpha) * Math.min(1, dt * (state === 'verdict' ? 4.5 : 2.2));
     var pacerOpts = { alpha: pacerAlpha, flag: 'rgba(224,244,255,0.94)', glow: true, scale: 1.30 };
 
@@ -441,6 +487,14 @@
       R2.drawWalker(w, t, {});
     }
     if (!drewPacer && pacerAlpha > 0.02) R2.drawWalker(W.pacer, t, pacerOpts);
+
+    /* 吹き出し */
+    for (i = 0; i < bubbles.length; i++) {
+      var B = bubbles[i];
+      var age = B.until - t;
+      var ba = Math.min(1, age / 0.4) * 0.92;
+      R2.drawBubble(B.w, B.text, ba);
+    }
 
     /* レーザー */
     if (state === 'verdict') {
@@ -482,6 +536,17 @@
     }
     btn('btnStart', function () { G.startRun(); });
     btn('btnAgain', function () { G.startRun(); });
+    visMode = !!U.storage.get('sw_vis', false);
+    var bv = $('btnVis');
+    function visLabel() { bv.textContent = '視認モード: ' + (visMode ? 'オン' : 'オフ'); }
+    visLabel();
+    bv.addEventListener('click', function (e) {
+      e.stopPropagation();
+      A.init(); A.ui(A.now());
+      visMode = !visMode;
+      U.storage.set('sw_vis', visMode);
+      visLabel();
+    });
 
     state = 'title';
     show('panelTitle');

@@ -37,8 +37,8 @@
     { /* 3 */
       bpm: 104, groups: [7], demo: 3, echo: 2, black: 5,
       name: '七つ',
-      note: '四つではない。数えても割り切れない',
-      pattern: [0, 1, 2, 3, 4, 5, 6]
+      note: '七拍。しかも途中で駆ける',
+      pattern: [0, 1, 2, 2.5, 3, 4, 5, 5.5, 6]
     },
     { /* 4 */
       bpm: 106, groups: [4], demo: 3, echo: 2, black: 8,

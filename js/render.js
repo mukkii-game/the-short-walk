@@ -40,6 +40,10 @@
   };
 
   var camX = 0;
+  var zoom = 1;
+
+  R2.setZoom = function (z) { zoom = z; };
+  R2.zoom = function () { return zoom; };
 
   /* ---- ドット絵スプライト ----
    *
@@ -121,7 +125,7 @@
     var t = laneT(laneF);
     var s = U.lerp(CFG.scaleFar, CFG.scaleNear, t);
     var y = U.lerp(horizonY(), groundY(), t);
-    var ppm = CFG.ppm * s;
+    var ppm = CFG.ppm * zoom * s;
     var sx = Wd * CFG.playerScreenF + (x - camX) * ppm;
     return { x: sx, y: y, s: s, ppm: ppm };
   }
@@ -217,7 +221,7 @@
     /* 中央の破線。8mごと、4mぶん */
     var mid = (far + near) / 2;
     var yMid = yOf(mid);
-    var ppmMid = CFG.ppm * U.lerp(CFG.scaleFar, CFG.scaleNear, laneT(mid));
+    var ppmMid = CFG.ppm * zoom * U.lerp(CFG.scaleFar, CFG.scaleNear, laneT(mid));
     var span = 8, start = Math.floor((camX - 40) / span) * span;
     g.strokeStyle = PAL.mark;
     g.lineWidth = Math.max(1.5, 0.16 * ppmMid);
@@ -235,7 +239,7 @@
     g.lineWidth = 1;
     for (var lane = far + 0.06; lane < near; lane += 0.12) {
       var y = yOf(lane);
-      var pm = CFG.ppm * U.lerp(CFG.scaleFar, CFG.scaleNear, laneT(lane));
+      var pm = CFG.ppm * zoom * U.lerp(CFG.scaleFar, CFG.scaleNear, laneT(lane));
       g.beginPath();
       for (var x2 = start; x2 < camX + 60; x2 += 3) {
         var ax = Wd * CFG.playerScreenF + (x2 - camX) * pm;
@@ -584,6 +588,37 @@
     }
     g.restore();
     void t;
+  };
+
+  /* NPCの吹き出し。短い一言。 */
+  R2.drawBubble = function (w, text, alpha) {
+    var p = screenOf(w.x, w.laneF);
+    if (p.x < -80 || p.x > Wd + 80) return;
+    var h = CFG.bodyH * p.ppm;
+    var fs = U.clamp(h * 0.17, 11, 19);
+    g.save();
+    g.globalAlpha = alpha;
+    g.font = fs + 'px "Yu Mincho", "Hiragino Mincho ProN", serif';
+    var tw = g.measureText(text).width;
+    var pad = fs * 0.45;
+    var bx = p.x - tw / 2 - pad;
+    var by = p.y - h * 1.32 - fs;
+    var bw = tw + pad * 2;
+    var bh = fs + pad * 1.1;
+    g.fillStyle = 'rgba(10,11,15,0.78)';
+    g.strokeStyle = 'rgba(210,204,188,0.45)';
+    g.lineWidth = 1;
+    g.beginPath();
+    if (g.roundRect) g.roundRect(bx, by, bw, bh, 4); else g.rect(bx, by, bw, bh);
+    g.fill(); g.stroke();
+    /* しっぽ */
+    g.beginPath();
+    g.moveTo(p.x - 3, by + bh); g.lineTo(p.x + 3, by + bh); g.lineTo(p.x, by + bh + fs * 0.4);
+    g.closePath(); g.fill();
+    g.fillStyle = '#ded8c8';
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(text, p.x, by + bh / 2);
+    g.restore();
   };
 
   R2.drawMarks = function () {
