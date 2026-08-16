@@ -27,60 +27,34 @@
       pattern: [0, 1, 2, 3]
     },
     { /* 2 */
-      bpm: 100, groups: [4], demo: 2, echo: 2, black: 6,
-      name: '沈黙は長くなる',
-      note: '同じお題。ただし無音が伸びる',
-      pattern: [0, 1, 2, 3]
-    },
-    { /* 3 */
-      bpm: 100, groups: [4], demo: 2, echo: 2, black: 6,
+      bpm: 102, groups: [4], demo: 2, echo: 2, black: 6,
       name: 'つまずき',
-      note: '八分がひとつ混ざる',
+      note: '八分が混ざり、無音が伸びる',
       pattern: [0, 1, 1.5, 2, 3]
     },
-    { /* 4 */
-      bpm: 102, groups: [4], demo: 3, echo: 2, black: 6,
-      name: '駆け足',
-      note: '八分が増える',
-      pattern: [0, 0.5, 1, 2, 2.5, 3]
-    },
-    { /* 5 */
+    { /* 3 */
       bpm: 104, groups: [7], demo: 3, echo: 2, black: 5,
       name: '七つ',
       note: '四つではない。数えても割り切れない',
       pattern: [0, 1, 2, 3, 4, 5, 6]
     },
-    { /* 6 */
-      bpm: 104, groups: [7], demo: 3, echo: 2, black: 6,
-      name: '七つを崩す',
-      note: '七拍のなかに八分が入る',
-      pattern: [0, 1, 2, 2.5, 3, 4, 5, 5.5, 6]
-    },
-    { /* 7 */
-      bpm: 104, groups: [4, 7], demo: 3, echo: 2, black: 4,
-      name: '二つの拍子',
-      note: '四拍のあとに七拍。先導者の足音が変わる',
-      pattern: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-    },
-    { /* 8 */
+    { /* 4 */
       bpm: 106, groups: [4], demo: 3, echo: 2, black: 8,
       name: 'ずらす',
       note: '食う。拍の頭がほとんど無い',
       pattern: [0, 0.5, 1.5, 2.5, 3]
     },
-    { /* 9 */
-      bpm: 108, groups: [4, 7], demo: 3, echo: 2, black: 4,
-      name: '混ざる',
-      note: '二つの拍子、それぞれに八分',
-      pattern: [0, 0.5, 1, 2, 3, 4, 5, 5.5, 6, 7, 8, 9, 9.5, 10]
-    },
-    { /* 10 */
-      bpm: 110, groups: [7, 4], demo: 3, echo: 2, black: 5,
+    { /* 5 */
+      bpm: 108, groups: [7, 4], demo: 3, echo: 2, black: 5,
       name: '最後の二人',
       note: '七拍から四拍へ。総合試験',
       pattern: [0, 1, 1.5, 2, 3, 4, 5, 5.5, 6, 7, 7.5, 8, 9, 9.5, 10]
     }
   ];
+
+  /* 各ラウンド終了時の生存数。12 → 8 → 5 → 3 → 2 → 1
+   * 枠の距離ではなく順位で切る。ズレの大きい下位から処理される。 */
+  SW.TARGETS = [8, 5, 3, 2, 1];
 
   /* 各お題の合計拍数と、拍位置がどの拍子に属するか */
   SW.rounds.forEach(function (r) {
@@ -99,7 +73,5 @@
    * 「少しずつ減っていく」を1人単位で見せる。 */
   SW.START_COUNT = 12;   /* プレイヤー含む。先導者は別 */
 
-  /* 規定位置からこれ以上離れた者は、無音の間に随時処理される。
-   * 一歩ぶん(約0.6m)の踏み外し2回でほぼ死ぬ距離。ラウンドが進むと狭まる */
-  SW.limitFor = function (idx) { return Math.max(0.85, 2.6 - idx * 0.20); };
+
 })(window);

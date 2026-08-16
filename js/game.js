@@ -84,7 +84,6 @@
       idx: idx, cfg: cfg, bpm: cfg.bpm,
       beatDur: beatDur, phraseDur: phraseDur,
       pattern: cfg.pattern,
-      limit: SW.limitFor(idx),
       t0: t0,
       /* 提示 → 号令1フレーズ（全員自動のまま）→ 無音 */
       tCount: t0 + cfg.demo * phraseDur,
@@ -110,13 +109,15 @@
     fill(r.slotsBlack, cfg.demo + 1, cfg.black);
     fill(r.slotsCool, cfg.demo + 1 + cfg.black, 3);
 
-    /* 号令の時刻。無音に入る直前の3拍と、入りの瞬間 */
-    r.cues = [
-      { t: r.tGo - 3 * beatDur, s: '3' },
-      { t: r.tGo - 2 * beatDur, s: '2' },
-      { t: r.tGo - 1 * beatDur, s: '1' },
-      { t: r.tGo, s: 'START' }
-    ];
+    /* 号令。頭に入れたリズムそのもので数える。
+     * お題の打鍵が5つなら 5,4,3,2,1 ── 号令フレーズの各打鍵に1つずつ。
+     * 一定拍で数えると、覚えたリズムと違う拍子が最後に流れて邪魔になる。 */
+    r.cues = [];
+    var n = r.slotsCount.length;
+    for (var ci = 0; ci < n; ci++) {
+      r.cues.push({ t: r.slotsCount[ci].t, s: String(n - ci) });
+    }
+    r.cues.push({ t: r.tGo, s: 'START' });
     return r;
   }
 
@@ -127,9 +128,9 @@
       var k = r.cfg.groups.length > 1 ? (r.slotsDemo[i].g === 0 ? 'R' : 'L') : 'R';
       A.step(r.slotsDemo[i].t, k, 0.75);
     }
-    /* 号令の音。低く短く */
-    A.ui(r.cues[0].t); A.ui(r.cues[1].t); A.ui(r.cues[2].t);
-    A.thud(r.cues[3].t);
+    /* 号令の音。数える一発ごとに低い音、STARTは重い一撃 */
+    for (i = 0; i < r.cues.length - 1; i++) A.ui(r.cues[i].t);
+    A.thud(r.cues[r.cues.length - 1].t);
     A.bedStart(r.t0);
   }
 
@@ -304,9 +305,10 @@
   function beginVerdict(t) {
     lasers = [];
     verdictDone = -1;
-    /* 最低でも下位1/4は消える。終盤は1人ずつ */
-    var quota = Math.max(1, Math.floor(W.aliveCount() / 4));
-    var victims = W.markVictims(R.limit, quota);
+    /* 生存数を規定の列(12→8→5→3→2→1)まで削る。ズレの大きい下位から */
+    var target = SW.TARGETS[Math.min(roundIdx, SW.TARGETS.length - 1)];
+    var quota = Math.max(0, W.aliveCount() - target);
+    var victims = W.markVictims(1e9, quota);
     for (var i = 0; i < victims.length; i++) {
       lasers.push({ w: victims[i], at: t + 1.1 + i * LASER_GAP, hit: false });
     }
