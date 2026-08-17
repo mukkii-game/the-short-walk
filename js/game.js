@@ -259,6 +259,7 @@
     if (state === 'chase') {
       if (chase && !chase.done && chase.crushT < 0) {
         W.player.x += CHASE_STEP;
+        chase.runDist = (chase.runDist || 0) + CHASE_STEP;
         W.registerStep(W.player, t, 'R');
         A.step(A.now(), 'R', 0.6);
       }
@@ -620,10 +621,19 @@
     /* 1.7秒おいてから、横〜後ろの半円ににじり寄る群れが現れる */
     if (!c.spawned && t - c.t0 > 1.7) {
       c.spawned = true;
-      W.spawnChasers(42, t);
+      c.runDist = 0;
+      c.nextWave = t + 1.3;
+      W.spawnChasers(90, t);
       A.eerieStart();
     }
     if (!c.spawned) return;
+
+    /* 一定間隔でリスポーン。逃げても逃げても、周りを埋め尽くしてくる */
+    if (c.camFollow && c.crushT < 0 && t >= c.nextWave) {
+      c.nextWave = t + 1.3;
+      W.addChasers(10, t);
+      W.cullChasers(170);
+    }
 
     /* 押し潰されている最中: 群れが折り重なり、画面が白に沈む */
     if (c.crushT > 0) {
@@ -655,8 +665,8 @@
       }
     }
 
-    /* 振り切り: 走り続けて全員が後方へ */
-    if (c.camFollow && t - c.t0 > 9 && W.chasersShaken(4.5)) {
+    /* 振り切り: 20mを走り抜いたらリスポーンが止まり、カメラも止まる */
+    if (c.camFollow && t - c.t0 > 10 && (c.runDist || 0) >= 20) {
       c.camFollow = false;
       c.camFix = camX;
       A.eerieStop(2.0);

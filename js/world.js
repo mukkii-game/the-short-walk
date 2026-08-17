@@ -244,44 +244,70 @@
    * ペースメーカーの群れが後方から迫ってくる。ゲーム本編の隊列とは別物 */
   W.chasers = [];
 
-  W.spawnChasers = function (n, t) {
-    W.chasers = [];
+  /* 追手をk体足す。各自がプレイヤー基準の「持ち場」(極座標オフセット)を持ち、
+   * その持ち場を保ったまま走者を追う。全員が1点を狙うと一直線に畳まれてしまうため。
+   * 正面±45°は口のように常に開いている(パックマン型) */
+  W.addChasers = function (k, t) {
     var px = W.player.x, pl = W.player.laneF;
-    var laneHalf = (W.LANE_NEAR - W.LANE_FAR) / 2 + 0.14;
-    for (var i = 0; i < n; i++) {
-      var c = makeWalker(900 + i, false);
+    var laneHalf = (W.LANE_NEAR - W.LANE_FAR) / 2 + 0.12;
+    for (var i = 0; i < k; i++) {
+      var c = makeWalker(900 + W.chasers.length + i, false);
       c.isPacer = true;
-      /* パックマンのような形。正面±45°だけが口のように開いていて、
-       * 前方斜めからも、横からも、後ろからも寄ってくる */
       var ang = Math.PI / 4 + Math.random() * (Math.PI * 1.5);   /* 45°〜315° */
-      var ring = 7.5 + (i % 4) * 2.6 + Math.random() * 1.8;
-      c.x = px + Math.cos(ang) * ring;
-      c.laneF = c.laneT = U.clamp(pl + Math.sin(ang) * laneHalf * (ring / 12),
-        W.LANE_FAR - 0.20, W.LANE_NEAR + 0.10);
+      c.offA = ang;
+      c.biter = Math.random() < 0.35;          /* 一部だけが最後まで詰めてくる */
+      c.offR = c.biter ? 1.2 + Math.random() * 3.0
+                       : 2.2 + Math.random() * 6.0;   /* 持ち場の距離。じわじわ縮む */
+      /* 湧きは持ち場よりさらに外側。斜め前奥からも現れる */
+      var spawnR = c.offR + 7 + Math.random() * 9;
+      c.x = px + Math.cos(ang) * spawnR;
+      c.laneF = c.laneT = U.clamp(pl + Math.sin(ang) * laneHalf * (spawnR / 11),
+        W.LANE_FAR - 0.22, W.LANE_NEAR + 0.12);
+      c.front = Math.cos(ang) > 0.05;          /* 前方勢はゆっくり来る */
       c.lastStepT = t; c.pace = 0.7;
-      c.chaseDelay = Math.random() * 2.2;
+      c.chaseDelay = Math.random() * 1.6;
       c.jitterSeed = Math.random() * 100;
       W.chasers.push(c);
     }
   };
 
-  /* mode: 'creep'=ゾンビのようににじり寄る / 'crush'=群がって押し潰す */
+  W.spawnChasers = function (n, t) {
+    W.chasers = [];
+    W.addChasers(n, t);
+  };
+
+  /* 後方に置き去りになった者を回収する（数の上限管理） */
+  W.cullChasers = function (cap) {
+    if (W.chasers.length <= cap) return;
+    var px = W.player.x;
+    W.chasers = W.chasers.filter(function (c) { return px - c.x < 26; });
+    if (W.chasers.length > cap) W.chasers.length = cap;
+  };
+
+  /* mode: 'creep'=にじり寄る / 'crush'=群がって押し潰す */
   W.updateChasers = function (t, dt, speed, mode) {
     var px = W.player.x, pl = W.player.laneF;
+    var laneHalf = (W.LANE_NEAR - W.LANE_FAR) / 2 + 0.12;
     for (var i = 0; i < W.chasers.length; i++) {
       var c = W.chasers[i];
       if (c.chaseDelay > 0) { c.chaseDelay -= dt; continue; }
-      var dx = px - c.x;
-      var step = speed * dt;
+      /* 包囲がじわじわ縮む。biter は素肌まで、他は壁として少し外で止まる */
+      var minR = mode === 'crush' ? 0 : (c.biter ? 0 : 1.1);
+      c.offR = Math.max(minR, c.offR - (mode === 'crush' ? 3.0 : (c.biter ? 0.55 : 0.10)) * dt);
+      var gx = px + Math.cos(c.offA) * c.offR;
+      var gl = U.clamp(pl + Math.sin(c.offA) * laneHalf * (c.offR / 11) * 2.2,
+        W.LANE_FAR - 0.22, W.LANE_NEAR + 0.12);
+      var v = speed * (c.front && mode !== 'crush' ? 0.5 : 1);
+      var dx = gx - c.x;
+      var step = v * dt;
       c.x += Math.abs(dx) <= step ? dx : (dx > 0 ? step : -step);
-      var dl = pl - c.laneF;
-      var lstep = (mode === 'crush' ? 0.30 : 0.055) * dt;
+      var dl = gl - c.laneF;
+      var lstep = (mode === 'crush' ? 0.30 : 0.10) * dt;
       c.laneF += Math.abs(dl) <= lstep ? dl : (dl > 0 ? lstep : -lstep);
       /* 不気味な小刻みの震え */
       c.x += Math.sin(t * 23 + c.jitterSeed) * 0.010;
       c.laneF += Math.sin(t * 31 + c.jitterSeed * 2) * 0.0014;
       c.laneT = c.laneF;
-      /* のろい足取り */
       if (t - c.lastStepT > (mode === 'crush' ? 0.3 : 0.7)) {
         W.registerStep(c, t, 'R');
         c.pace = mode === 'crush' ? 0.3 : 0.7;
@@ -289,6 +315,7 @@
     }
   };
 
+  /* 全追手が後方に振り切れたか */
   /* 全追手が後方に振り切れたか */
   /* 全追手が後方に振り切れたか */
   W.chasersShaken = function (margin) {
