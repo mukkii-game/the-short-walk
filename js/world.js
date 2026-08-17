@@ -241,49 +241,49 @@
   W.spawnChasers = function (n, t) {
     W.chasers = [];
     var px = W.player.x, pl = W.player.laneF;
+    var laneHalf = (W.LANE_NEAR - W.LANE_FAR) / 2 + 0.14;
     for (var i = 0; i < n; i++) {
       var c = makeWalker(900 + i, false);
       c.isPacer = true;
-      /* 画面の外側の端から。遠く小さく現れる */
-      var side = Math.random() < 0.65 ? -1 : 1;      /* 多くは後方から */
-      c.x = px + side * (13 + Math.random() * 9);
-      c.laneF = c.laneT = W.LANE_FAR - 0.18 + Math.random() * (W.LANE_NEAR - W.LANE_FAR + 0.28);
-      c.lastStepT = t; c.pace = 0.5;
-      c.chaseDelay = Math.random() * 1.8;
+      /* プレイヤーの横から後ろまでの半円。前からは決して来ない。
+       * 半径を少しずつずらした何重かの弧になる */
+      var ang = Math.PI / 2 + Math.random() * Math.PI;    /* 90°〜270°: 横〜後ろ */
+      var ring = 7.5 + (i % 4) * 2.6 + Math.random() * 1.8;
+      c.x = px + Math.cos(ang) * ring;
+      c.laneF = c.laneT = U.clamp(pl + Math.sin(ang) * laneHalf * (ring / 12),
+        W.LANE_FAR - 0.20, W.LANE_NEAR + 0.10);
+      c.lastStepT = t; c.pace = 0.7;
+      c.chaseDelay = Math.random() * 2.2;
       c.jitterSeed = Math.random() * 100;
       W.chasers.push(c);
     }
   };
 
-  /* mode: 'ring'=距離を保って囲む / 'lunge'=一斉に襲いかかる */
+  /* mode: 'creep'=ゾンビのようににじり寄る / 'crush'=群がって押し潰す */
   W.updateChasers = function (t, dt, speed, mode) {
     var px = W.player.x, pl = W.player.laneF;
     for (var i = 0; i < W.chasers.length; i++) {
       var c = W.chasers[i];
       if (c.chaseDelay > 0) { c.chaseDelay -= dt; continue; }
       var dx = px - c.x;
+      var step = speed * dt;
+      c.x += Math.abs(dx) <= step ? dx : (dx > 0 ? step : -step);
       var dl = pl - c.laneF;
-      var dist = Math.abs(dx);
-      var hold = mode === 'ring' ? 1.6 : 0;   /* 触れそうな距離で震えている */
-      if (dist > hold) {
-        var step = speed * dt;
-        c.x += Math.abs(dx) <= step ? dx : (dx > 0 ? step : -step);
-      }
-      var lstep = 0.11 * dt;
-      if (Math.abs(dl) > (mode === 'ring' ? 0.10 : 0)) {
-        c.laneF += Math.abs(dl) <= lstep ? dl : (dl > 0 ? lstep : -lstep);
-      }
+      var lstep = (mode === 'crush' ? 0.30 : 0.055) * dt;
+      c.laneF += Math.abs(dl) <= lstep ? dl : (dl > 0 ? lstep : -lstep);
       /* 不気味な小刻みの震え */
-      c.x += Math.sin(t * 23 + c.jitterSeed) * 0.012;
-      c.laneF += Math.sin(t * 31 + c.jitterSeed * 2) * 0.0016;
+      c.x += Math.sin(t * 23 + c.jitterSeed) * 0.010;
+      c.laneF += Math.sin(t * 31 + c.jitterSeed * 2) * 0.0014;
       c.laneT = c.laneF;
-      if (t - c.lastStepT > 0.34) {
+      /* のろい足取り */
+      if (t - c.lastStepT > (mode === 'crush' ? 0.3 : 0.7)) {
         W.registerStep(c, t, 'R');
-        c.pace = 0.34;
+        c.pace = mode === 'crush' ? 0.3 : 0.7;
       }
     }
   };
 
+  /* 全追手が後方に振り切れたか */
   /* 全追手が後方に振り切れたか */
   W.chasersShaken = function (margin) {
     for (var i = 0; i < W.chasers.length; i++) {

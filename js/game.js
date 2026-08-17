@@ -257,10 +257,8 @@
 
   function pressAt(t) {
     if (state === 'chase') {
-      if (chase && !chase.done) {
+      if (chase && !chase.done && chase.crushT < 0) {
         W.player.x += CHASE_STEP;
-        chase.lastPress = t;
-        chase.still = 0;
         W.registerStep(W.player, t, 'R');
         A.step(A.now(), 'R', 0.6);
       }
@@ -388,6 +386,7 @@
   G.toTitle = function () {
     SW.net.close();
     online = null;
+    A.eerieStop(0.2);
     A.panic();
     A.musicLevel(0.0, 0.3);
     A.ambLevel(0.10, 0.6);
@@ -580,9 +579,8 @@
   function beginChase(t) {
     state = 'chase';
     chase = {
-      t0: t, speed: 2.0, done: null, doneAt: 0,
-      spawned: false, lunge: false,
-      still: 0, lastPress: t,
+      t0: t, done: null, doneAt: 0,
+      spawned: false, crushT: -1,
       camFollow: true, camFix: 0, whiteout: 0
     };
     A.bedStop();
@@ -592,48 +590,57 @@
 
   function chaseTick(t, dt) {
     var c = chase;
-    if (!c || c.done) return;
+    if (!c) return;
 
-    /* 1.7秒おいてから、群れが端から現れる */
+    /* プレイヤーは道の中央へ。上からも下からも囲まれているのが見えるように */
+    var mid = (W.LANE_FAR + W.LANE_NEAR) / 2;
+    W.player.laneF += (mid - W.player.laneF) * Math.min(1, dt * 0.9);
+    W.player.laneT = W.player.laneF;
+
+    /* 1.7秒おいてから、横〜後ろの半円ににじり寄る群れが現れる */
     if (!c.spawned && t - c.t0 > 1.7) {
       c.spawned = true;
       W.spawnChasers(42, t);
+      A.eerieStart();
     }
     if (!c.spawned) return;
 
-    /* 立ち尽くしの計測。押していない時間が積もると襲われる */
-    if (t - c.lastPress > 0.7) c.still += dt;
-    if (!c.lunge && c.still > 5) {
-      c.lunge = true;
-      c.speed = 6;
-    }
-    if (!c.lunge) c.speed = Math.min(1.75, c.speed + 0.06 * dt);
-
-    W.updateChasers(t, dt, c.speed, c.lunge ? 'lunge' : 'ring');
-
-    /* 捕縛は襲撃のときだけ。囲んでいる間は、触れそうで触れない */
-    for (var i = 0; c.lunge && i < W.chasers.length; i++) {
-      var ch = W.chasers[i];
-      if (Math.abs(ch.x - W.player.x) < 0.7 &&
-          Math.abs(ch.laneF - W.player.laneF) < 0.06) {
+    /* 押し潰されている最中: 群れが折り重なり、画面が白に沈む */
+    if (c.crushT > 0) {
+      W.updateChasers(t, dt, 4.5, 'crush');
+      c.whiteout = U.clamp((t - c.crushT) / 2.0, 0, 1);
+      if (c.whiteout >= 1 && !c.done) {
         c.done = 'end';
         c.doneAt = t;
-        c.whiteout = 1;
-        A.beam(t);            /* ズバー */
-        A.thud(t + 0.05);
         state = 'chaseend';
+        A.eerieStop(0.4);
+        A.thud(t);
         A.ambLevel(0.02, 1.0);
         hide('hud');
+      }
+      return;
+    }
+
+    /* ゾンビのようにゆっくりにじり寄る */
+    W.updateChasers(t, dt, 0.9, 'creep');
+
+    /* 触れられたら、そのまま群れに飲まれる */
+    for (var i = 0; i < W.chasers.length; i++) {
+      var ch = W.chasers[i];
+      if (Math.abs(ch.x - W.player.x) < 0.6 &&
+          Math.abs(ch.laneF - W.player.laneF) < 0.05) {
+        c.crushT = t;
+        A.beam(t);            /* ズバー */
         return;
       }
     }
 
-    /* 振り切り: 10秒以上走り、全員が後方へ消えたらカメラが止まる */
+    /* 振り切り: 走り続けて全員が後方へ */
     if (c.camFollow && t - c.t0 > 9 && W.chasersShaken(4.5)) {
       c.camFollow = false;
       c.camFix = camX;
+      A.eerieStop(2.0);
     }
-    /* カメラが止まったら、右端へ消えるまでの間に白へ溶けていく */
     if (!c.camFollow) {
       var sp = R2.screenOf(W.player.x, W.player.laneF);
       var w0 = R2.size().w * 0.55;
@@ -874,10 +881,10 @@
         var hold = t - chase.doneAt;
         if (hold > (chase.done === 'end' ? 0.5 : 1.2)) {
           g.fillStyle = chase.done === 'end' ? 'rgba(20,20,22,0.92)' : 'rgba(15,15,17,0.95)';
-          g.font = '400 ' + Math.floor(sz2.w * (chase.done === 'end' ? 0.16 : 0.09)) +
+          g.font = '400 ' + Math.floor(sz2.w * (chase.done === 'end' ? 0.16 : 0.075)) +
             'px Impact, "Arial Narrow Bold", sans-serif';
           g.textAlign = 'center'; g.textBaseline = 'middle';
-          g.fillText(chase.done === 'end' ? 'END' : 'LIFE CONTINUES',
+          g.fillText(chase.done === 'end' ? 'END' : 'YOUR LIFE CONTINUES',
             sz2.w / 2, sz2.h * 0.46);
         }
       }

@@ -16,6 +16,7 @@
   var noiseBuf = null;
   var scheduled = [];     // 未来に予約済みのノード（中断時に止める）
   var windNodes = null;
+  var eerieNodes = null;
   var ready = false;
 
   function makeNoise() {
@@ -252,6 +253,33 @@
       s.connect(lp); lp.connect(g); g.connect(busAmb);
       s.start(); l1.start(); l2.start();
       windNodes = { s: s, l1: l1, l2: l2 };
+    },
+
+    /* 不気味な接近音。うなりを持つ低い二重音と、かすかな高い笛。
+     * 無理数比の周波数で、周期を感じさせない */
+    eerieStart: function () {
+      if (!ready || eerieNodes) return;
+      var g1 = ctx.createGain(); g1.gain.value = 0.0001; g1.connect(master);
+      var o1 = ctx.createOscillator(); o1.type = 'sine'; o1.frequency.value = 92.6;
+      var o2 = ctx.createOscillator(); o2.type = 'sine'; o2.frequency.value = 96.1;
+      var o3 = ctx.createOscillator(); o3.type = 'sine'; o3.frequency.value = 1873;
+      var g3 = ctx.createGain(); g3.gain.value = 0.014;
+      var lfo = ctx.createOscillator(); lfo.frequency.value = 0.113;
+      var lg = ctx.createGain(); lg.gain.value = 0.06;
+      lfo.connect(lg); lg.connect(g1.gain);
+      o1.connect(g1); o2.connect(g1); o3.connect(g3); g3.connect(g1);
+      o1.start(); o2.start(); o3.start(); lfo.start();
+      g1.gain.setTargetAtTime(0.16, ctx.currentTime, 2.5);
+      eerieNodes = { g: g1, stop: function () {
+        try { o1.stop(); o2.stop(); o3.stop(); lfo.stop(); } catch (e) { /* 停止済み */ }
+      } };
+    },
+
+    eerieStop: function (fade) {
+      if (!eerieNodes) return;
+      var n = eerieNodes; eerieNodes = null;
+      n.g.gain.setTargetAtTime(0.0001, ctx.currentTime, fade || 0.8);
+      setTimeout(function () { n.stop(); }, (fade || 0.8) * 4000);
     },
 
     /* 環境音の音量。0..1 */
