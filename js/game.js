@@ -297,6 +297,12 @@
     if (e.code === 'Space' && !typing) e.preventDefault();
     if (typing) return;
 
+    /* ESC でいつでもタイトルへ */
+    if (e.code === 'Escape' && state !== 'title') {
+      G.toTitle();
+      return;
+    }
+
     if (state === 'title') {
       if (e.code === 'KeyC' && e.shiftKey) { G.startCalib(); return; }   /* 隠し: 遅延測定 */
       if (e.code === 'Enter' || e.code === 'Space') G.startRun();
