@@ -241,48 +241,55 @@
   W.spawnChasers = function (n, t) {
     W.chasers = [];
     var px = W.player.x, pl = W.player.laneF;
-    var made = 0, guard = 0;
-    while (made < n && guard++ < n * 30) {
-      /* 四方八方から。ただし進行方向の正面だけは帯状に空けておく。
-       * その隙間に気づいた者だけが、連打で抜けられる */
-      var dx = (Math.random() * 2 - 1) * 16;
-      var lane = W.LANE_FAR - 0.16 + Math.random() * (W.LANE_NEAR - W.LANE_FAR + 0.24);
-      if (dx > 0 && Math.abs(lane - pl) < 0.30) continue;   /* 前方の空隙 */
-      if (Math.abs(dx) < 5 && Math.abs(lane - pl) < 0.12) continue;
-      var c = makeWalker(900 + made, false);
+    for (var i = 0; i < n; i++) {
+      var c = makeWalker(900 + i, false);
       c.isPacer = true;
-      c.x = px + dx;
-      c.laneF = c.laneT = lane;
-      /* 後ろの者は「追う」。前と奥の者は「輪を縮める」。
-       * 全員が走者を直接追うと、正面の隙間が定義ごと消えてしまう */
-      c.hunts = dx < -2;
-      c.tx = px; c.tl = pl;                    /* 輪の中心（優勝の座標） */
-      c.lastStepT = t; c.pace = 0.4;
-      c.chaseDelay = Math.random() * 2.0;
+      /* 画面の外側の端から。遠く小さく現れる */
+      var side = Math.random() < 0.65 ? -1 : 1;      /* 多くは後方から */
+      c.x = px + side * (13 + Math.random() * 9);
+      c.laneF = c.laneT = W.LANE_FAR - 0.18 + Math.random() * (W.LANE_NEAR - W.LANE_FAR + 0.28);
+      c.lastStepT = t; c.pace = 0.5;
+      c.chaseDelay = Math.random() * 1.8;
+      c.jitterSeed = Math.random() * 100;
       W.chasers.push(c);
-      made++;
     }
   };
 
-  W.updateChasers = function (t, dt, speed) {
+  /* mode: 'ring'=距離を保って囲む / 'lunge'=一斉に襲いかかる */
+  W.updateChasers = function (t, dt, speed, mode) {
     var px = W.player.x, pl = W.player.laneF;
     for (var i = 0; i < W.chasers.length; i++) {
       var c = W.chasers[i];
       if (c.chaseDelay > 0) { c.chaseDelay -= dt; continue; }
-      var gx = c.hunts ? px : c.tx;
-      var gl = c.hunts ? pl : c.tl;
-      var dx = gx - c.x;
-      var step = speed * dt * (c.hunts ? 1 : 0.8);
-      c.x += Math.abs(dx) <= step ? dx : (dx > 0 ? step : -step);
-      var dl = gl - c.laneF;
-      var lstep = 0.085 * dt * (0.7 + speed * 0.10);
-      c.laneF += Math.abs(dl) <= lstep ? dl : (dl > 0 ? lstep : -lstep);
+      var dx = px - c.x;
+      var dl = pl - c.laneF;
+      var dist = Math.abs(dx);
+      var hold = mode === 'ring' ? 1.6 : 0;   /* 触れそうな距離で震えている */
+      if (dist > hold) {
+        var step = speed * dt;
+        c.x += Math.abs(dx) <= step ? dx : (dx > 0 ? step : -step);
+      }
+      var lstep = 0.11 * dt;
+      if (Math.abs(dl) > (mode === 'ring' ? 0.10 : 0)) {
+        c.laneF += Math.abs(dl) <= lstep ? dl : (dl > 0 ? lstep : -lstep);
+      }
+      /* 不気味な小刻みの震え */
+      c.x += Math.sin(t * 23 + c.jitterSeed) * 0.012;
+      c.laneF += Math.sin(t * 31 + c.jitterSeed * 2) * 0.0016;
       c.laneT = c.laneF;
-      if (t - c.lastStepT > 0.75 / Math.max(1, speed)) {
+      if (t - c.lastStepT > 0.34) {
         W.registerStep(c, t, 'R');
-        c.pace = 0.75 / Math.max(1, speed);
+        c.pace = 0.34;
       }
     }
+  };
+
+  /* 全追手が後方に振り切れたか */
+  W.chasersShaken = function (margin) {
+    for (var i = 0; i < W.chasers.length; i++) {
+      if (W.player.x - W.chasers[i].x < margin) return false;
+    }
+    return W.chasers.length > 0;
   };
 
   W.aliveCount = function () {

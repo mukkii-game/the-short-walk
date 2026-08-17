@@ -259,6 +259,8 @@
     if (state === 'chase') {
       if (chase && !chase.done) {
         W.player.x += CHASE_STEP;
+        chase.lastPress = t;
+        chase.still = 0;
         W.registerStep(W.player, t, 'R');
         A.step(A.now(), 'R', 0.6);
       }
@@ -309,6 +311,10 @@
       return;
     }
     if (state === 'calib') { calibTap(); return; }
+    if (state === 'chaseend') {
+      if (chase && chase.done && t2ok()) G.toTitle();
+      return;
+    }
     if (state === 'end') {
       if (e.code === 'Enter' || e.code === 'Space') G.startRun();
       return;
@@ -319,8 +325,17 @@
   function onPointer(e) {
     if (state === 'title') { G.startRun(); return; }
     if (state === 'calib') { calibTap(); return; }
+    if (state === 'chaseend') {
+      if (chase && chase.done && t2ok()) G.toTitle();
+      return;
+    }
     if (state === 'end') { G.startRun(); return; }
     pressKey(e);
+  }
+
+  /* 文字が出てから受け付ける（誤タップで飛ばさない） */
+  function t2ok() {
+    return A.now() - chase.doneAt > (chase.done === 'end' ? 1.0 : 1.8);
   }
 
   /* ---- キャリブレーション ---- */
@@ -558,10 +573,18 @@
 
   var CHASE_STEP = 0.6;      /* 連打1回で進む距離 */
 
+  /* 優勝エンディング。
+   *   引き(1.7秒) → 画面の端から小さな群れが集まり、震えながら距離を保つ
+   *   → 5秒立ち尽くすと一斉に襲われ、白飛びして END
+   *   → 走り続けて全員振り切り、カメラが止まり、白に溶けて LIFE CONTINUES */
   function beginChase(t) {
     state = 'chase';
-    chase = { t0: t, camFix: camX, speed: 2.4, done: null, doneAt: 0 };
-    W.spawnChasers(38, t);
+    chase = {
+      t0: t, speed: 2.0, done: null, doneAt: 0,
+      spawned: false, lunge: false,
+      still: 0, lastPress: t,
+      camFollow: true, camFix: 0, whiteout: 0
+    };
     A.bedStop();
     A.ambLevel(0.34, 2.0);
     cue('ユウショウ', true);
@@ -570,46 +593,60 @@
   function chaseTick(t, dt) {
     var c = chase;
     if (!c || c.done) return;
-    /* 追手はだんだん速くなる */
-    c.speed += 0.12 * dt;
-    W.updateChasers(t, dt, c.speed);
 
-    /* 捕まった: 距離もレーンも詰められたら */
-    for (var i = 0; i < W.chasers.length; i++) {
+    /* 1.7秒おいてから、群れが端から現れる */
+    if (!c.spawned && t - c.t0 > 1.7) {
+      c.spawned = true;
+      W.spawnChasers(42, t);
+    }
+    if (!c.spawned) return;
+
+    /* 立ち尽くしの計測。押していない時間が積もると襲われる */
+    if (t - c.lastPress > 0.7) c.still += dt;
+    if (!c.lunge && c.still > 5) {
+      c.lunge = true;
+      c.speed = 6;
+    }
+    if (!c.lunge) c.speed = Math.min(1.75, c.speed + 0.06 * dt);
+
+    W.updateChasers(t, dt, c.speed, c.lunge ? 'lunge' : 'ring');
+
+    /* 捕縛は襲撃のときだけ。囲んでいる間は、触れそうで触れない */
+    for (var i = 0; c.lunge && i < W.chasers.length; i++) {
       var ch = W.chasers[i];
-      if (Math.abs(ch.x - W.player.x) < 0.8 &&
-          Math.abs(ch.laneF - W.player.laneF) < 0.07) {
+      if (Math.abs(ch.x - W.player.x) < 0.7 &&
+          Math.abs(ch.laneF - W.player.laneF) < 0.06) {
         c.done = 'end';
         c.doneAt = t;
-        A.thud(t);
-        flash = 0.6;
+        c.whiteout = 1;
+        A.beam(t);            /* ズバー */
+        A.thud(t + 0.05);
+        state = 'chaseend';
+        A.ambLevel(0.02, 1.0);
+        hide('hud');
         return;
       }
     }
-    /* 画面右端まで逃げ切った */
-    var sp = R2.screenOf(W.player.x, W.player.laneF);
-    if (sp.x > R2.size().w - 30) {
-      c.done = 'life';
-      c.doneAt = t;
-    }
-  }
 
-  function endChase() {
-    state = 'end';
-    A.panic();
-    A.ambLevel(0.08, 1.6);
-    hide('hud');
-    var t = A.now();
-    if (chase.done === 'life') {
-      A.fanfare(t + 0.2);
-      html('endTitle', 'Life continues...');
-      html('endLead', '');
-    } else {
-      A.dead(t + 0.15);
-      html('endTitle', 'End');
-      html('endLead', '');
+    /* 振り切り: 10秒以上走り、全員が後方へ消えたらカメラが止まる */
+    if (c.camFollow && t - c.t0 > 9 && W.chasersShaken(4.5)) {
+      c.camFollow = false;
+      c.camFix = camX;
     }
-    show('panelEnd');
+    /* カメラが止まったら、右端へ消えるまでの間に白へ溶けていく */
+    if (!c.camFollow) {
+      var sp = R2.screenOf(W.player.x, W.player.laneF);
+      var w0 = R2.size().w * 0.55;
+      c.whiteout = U.clamp((sp.x - w0) / (R2.size().w - w0), 0, 1);
+      if (sp.x > R2.size().w + 30) {
+        c.done = 'life';
+        c.doneAt = t;
+        c.whiteout = 1;
+        state = 'chaseend';
+        A.ambLevel(0.02, 2.0);
+        hide('hud');
+      }
+    }
   }
 
   function endRun(cleared) {
@@ -637,13 +674,17 @@
     if (!A.ok()) { R2.begin(0.2); R2.vignette(0.5); return; }
     var t = A.now();
 
-    if (state === 'chase') {
-      chaseTick(t, dt);
-      /* カメラは固定。画面はじょじょに引いていく */
-      zoomCur += (0.72 - zoomCur) * Math.min(1, dt * 0.22);
+    if (state === 'chase' || state === 'chaseend') {
+      if (state === 'chase') chaseTick(t, dt);
+      /* 画面は少しずつ引いていく */
+      zoomCur += (0.62 - zoomCur) * Math.min(1, dt * 0.16);
       R2.setZoom(zoomCur);
-      R2.setCam(chase.camFix);
-      if (chase.done && t - chase.doneAt > 1.2) endChase();
+      if (!chase || chase.camFollow) {
+        camX += (W.player.x - camX) * Math.min(1, dt * 9);
+        R2.setCam(camX);
+      } else {
+        R2.setCam(chase.camFix);
+      }
       draw(t, dt);
       return;
     }
@@ -823,6 +864,24 @@
     }
 
     R2.vignette(state === 'black' ? 0.60 : 0.32);
+
+    /* エンディングの白と、最後の言葉 */
+    if (chase && (state === 'chase' || state === 'chaseend') && chase.whiteout > 0) {
+      var sz2 = R2.size();
+      g.fillStyle = 'rgba(255,255,255,' + chase.whiteout.toFixed(3) + ')';
+      g.fillRect(0, 0, sz2.w, sz2.h);
+      if (state === 'chaseend' && chase.done) {
+        var hold = t - chase.doneAt;
+        if (hold > (chase.done === 'end' ? 0.5 : 1.2)) {
+          g.fillStyle = chase.done === 'end' ? 'rgba(20,20,22,0.92)' : 'rgba(15,15,17,0.95)';
+          g.font = '400 ' + Math.floor(sz2.w * (chase.done === 'end' ? 0.16 : 0.09)) +
+            'px Impact, "Arial Narrow Bold", sans-serif';
+          g.textAlign = 'center'; g.textBaseline = 'middle';
+          g.fillText(chase.done === 'end' ? 'END' : 'LIFE CONTINUES',
+            sz2.w / 2, sz2.h * 0.46);
+        }
+      }
+    }
   }
 
   /* ---- 起動 ---- */
