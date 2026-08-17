@@ -144,8 +144,11 @@
       var k = r.cfg.groups.length > 1 ? (r.slotsDemo[i].g === 0 ? 'R' : 'L') : 'R';
       A.step(r.slotsDemo[i].t, k, 0.75);
     }
-    /* 号令は表示のみ。音を鳴らすと拍の手がかりになってしまうし、
-     * 覚えたリズムの上に別の音が被さって邪魔になる */
+    /* 数値カウントの間も先導者の足音は続く。姿は薄れても刻みは聞かせる */
+    for (i = 0; i < r.slotsCount.length; i++) {
+      A.step(r.slotsCount[i].t, 'R', 0.6);
+    }
+    /* 号令の数字は表示のみ。別の音を被せると覚えたリズムの邪魔になる */
     A.bedStart(r.t0);
   }
 
