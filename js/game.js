@@ -206,9 +206,18 @@
     A.step(A.now(), 'R', state === 'black' ? 0.66 : 0.52);
   }
 
-  function pressKey() {
+  /* 入力時刻の補正。
+   * ハンドラが呼ばれた時点ではなく、OSがタッチ/キーを検知した時刻(e.timeStamp)まで
+   * 遡って記録する。スマホはイベント配送だけで30〜70ms遅れることがあり、
+   * これを補正しないとタッチ端末のプレイヤーだけ一律に遅く判定される。 */
+  function pressKey(e) {
     if (!A.ok()) return;
-    pressAt(A.now() - calOffset);
+    var lag = 0;
+    if (e && typeof e.timeStamp === 'number') {
+      lag = (performance.now() - e.timeStamp) / 1000;
+      if (!(lag >= 0 && lag < 0.25)) lag = 0;   /* 異常値は無視 */
+    }
+    pressAt(A.now() - lag - calOffset);
   }
 
   function isStepKey(code) {
@@ -231,14 +240,14 @@
       if (e.code === 'Enter' || e.code === 'Space') G.startRun();
       return;
     }
-    if (isStepKey(e.code)) pressKey();
+    if (isStepKey(e.code)) pressKey(e);
   }
 
-  function onPointer() {
+  function onPointer(e) {
     if (state === 'title') { G.startRun(); return; }
     if (state === 'calib') { calibTap(); return; }
     if (state === 'end') { G.startRun(); return; }
-    pressKey();
+    pressKey(e);
   }
 
   /* ---- キャリブレーション ---- */
@@ -544,6 +553,12 @@
     }
     btn('btnStart', function () { G.startRun(); });
     btn('btnAgain', function () { G.startRun(); });
+    var bc = $('btnCal2');
+    if (bc) bc.addEventListener('click', function (e) {
+      e.stopPropagation();
+      A.init(); A.ui(A.now());
+      G.startCalib();
+    });
     visMode = !!U.storage.get('sw_vis', false);
     var bv = $('btnVis');
     function visLabel() { bv.textContent = '視認モード: ' + (visMode ? 'オン' : 'オフ'); }
