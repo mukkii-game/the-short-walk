@@ -293,10 +293,10 @@
       w = W.walkers[i];
       if (w.alive) alive.push(w);
     }
-    /* ズレの大きい順 */
-    alive.sort(function (a, b) { return Math.abs(b.devHold) - Math.abs(a.devHold); });
+    /* ズレの大きい順（先導者の描画位置からの距離） */
+    alive.sort(function (a, b) { return Math.abs(W.relDev(b)) - Math.abs(W.relDev(a)); });
     for (i = 0; i < alive.length; i++) {
-      if (Math.abs(alive[i].devHold) > limit || out.length < (quota || 0)) out.push(alive[i]);
+      if (Math.abs(W.relDev(alive[i])) > limit || out.length < (quota || 0)) out.push(alive[i]);
     }
     /* 最後の一人は殺さない（勝者が残る） */
     if (out.length >= alive.length) out = out.slice(0, alive.length - 1);
@@ -520,6 +520,9 @@
       if (!w.isPlayer || t < R.tEcho || t >= R.tHold) advancePresses(w, t);
       target = stepTarget(w, R, t, reg, anchor, regEnd, stepDist, dt);
       w.x += (target - w.x) * smooth;
+      /* 判定は画面に実際に描かれている位置から取る。
+       * 追従イージングの遅れも含めて、見えているものと判定を完全に一致させる */
+      if (t >= R.tEcho && t < R.tHold) w.devHold = w.x - w.baseX - reg;
       w.laneF += (w.laneT - w.laneF) * Math.min(1, dt * 1.1);
     }
 
@@ -527,6 +530,7 @@
     advancePresses(pc, t);
     target = stepTarget(pc, R, t, reg, anchor, regEnd, stepDist, dt);
     pc.x += (target - pc.x) * smooth;
+    if (t >= R.tEcho && t < R.tHold) pc.devHold = pc.x - pc.baseX - reg;
     pc.laneF += (pc.laneT - pc.laneF) * Math.min(1, dt * 1.1);
 
     W.regX = reg;
@@ -559,13 +563,16 @@
       w.devHold = w.devBase + coast - (reg - anchor);
       return w.baseX + w.devBase + anchor + coast;
     }
-    /* 判定用のズレは補間した連続量で持つ（公平さのため）。
-     * ただし見た目の位置は「一歩＝きっかり一歩ぶん」に量子化する。
-     * 押した瞬間にその距離をパッと進む。歩幅と移動が一致して見えるように。
-     * 多少カクつくのは仕様で、update() 側の緩やかな追従で角を丸める */
-    var frac = U.clamp((t - w.lastStepT) / w.pace, 0, 1.25);
-    w.devHold = (w.devBase + (w.steps - 1 + frac) * stepDist) - (reg - anchor);
-    return w.baseX + w.devBase + anchor + (w.steps - 1) * stepDist + stepDist * 0.5;
+    /* 見た目の位置は「一歩＝きっかり一歩ぶん」の量子化。
+     * そして判定のズレは、この見えている位置そのものから取る。
+     *
+     * 以前は判定だけ歩間を補間した連続値を使っていたが、それだと
+     * 「画面では自分のほうが先導者に近いのに、判定では負けている」が起こる。
+     * 見えているものがルールのすべて、を守るため、両者を完全に一致させる。
+     * （半歩ぶんの共通オフセットは全員に等しく乗るので、順位には影響しない） */
+    var target = w.baseX + w.devBase + anchor + (w.steps - 1) * stepDist + stepDist * 0.5;
+    w.devHold = target - w.baseX - reg;
+    return target;
   }
   function advancePresses(w, t) {
     while (w.pi < w.presses.length && w.presses[w.pi].t <= t) {
@@ -590,6 +597,14 @@
   /* 規定位置からのズレ（メートル）。前が +
    * 断絶中は実時間の値、照合フェーズ以降は判定時点で確定した値を返す。 */
   W.deviation = function (w) { return w.devHold; };
+
+  /* 判定に使う本当のズレ = 先導者の描画位置からの距離。
+   * 表示には全員共通の半歩オフセットが乗っており、規定位置との絶対値で
+   * 順位を切ると「先導者の少し前を歩く」のが常に有利になってしまう。
+   * 先導者こそが見えている規定。そこからの距離で切る。 */
+  W.relDev = function (w) {
+    return w.devHold - (W.pacer ? W.pacer.devHold : 0);
+  };
   W.liveDeviation = function (w) { return (w.x - w.baseX) - W.regX; };
 
   /* ---- 採点と淘汰 ---- */

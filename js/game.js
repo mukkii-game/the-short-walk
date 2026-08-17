@@ -523,7 +523,7 @@
           roundEndAt = t;
           syncSince = t;
           /* 自分のズレを1つ送るだけ。あとは歩いて待つ */
-          SW.net.sendResult(roundIdx, W.player.devHold);
+          SW.net.sendResult(roundIdx, W.relDev(W.player));
         } else {
           state = 'verdict';
           roundEndAt = t;
