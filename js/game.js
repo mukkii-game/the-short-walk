@@ -80,11 +80,12 @@
   }
 
   /* 号令。一瞬で出て一瞬で消える */
-  function cue(s) {
+  function cue(s, long) {
     var c = $('cue');
     c.textContent = s;
-    c.classList.remove('on');
+    c.classList.remove('on'); c.classList.remove('long');
     void c.offsetWidth;      /* アニメーションを打ち直す */
+    if (long) c.classList.add('long');
     c.classList.add('on');
   }
 
@@ -133,7 +134,7 @@
     for (var ci = 0; ci < n; ci++) {
       r.cues.push({ t: r.slotsCount[ci].t, s: String(n - ci) });
     }
-    r.cues.push({ t: r.tGo, s: 'START' });
+    r.cues.push({ t: r.tGo, s: 'GO!', long: true });
     return r;
   }
 
@@ -403,7 +404,7 @@
       if (dw.duelLevel && dw.alive && dw.duelSegs && dw.duelSegs.length &&
           t >= dw.duelSegs[0].t) {
         var seg = dw.duelSegs.shift();
-        bubbles.push({ w: dw, text: U.pick(SW.PANIC), until: t + 1.9 });
+        bubbles.push({ w: dw, text: U.pick(SW.PANIC), until: t + 1.9, ox: Math.random() * 2 - 1, oy: Math.random() });
         if (seg.mode === 'run' && Math.random() < 0.6) {
           dw.laneT = W.LANE_NEAR - W.LANE_GAP * 0.5;   /* すぐ隣 */
         } else if (seg.mode === 'walk' && dw.homeLane != null) {
@@ -431,7 +432,7 @@
     } else {
       text = U.pick(SW.MUTTERS);
     }
-    bubbles.push({ w: w2, text: text, until: t + 2.6 });
+    bubbles.push({ w: w2, text: text, until: t + 2.6, ox: Math.random() * 2 - 1, oy: Math.random() });
   }
 
   /* ---- 判決・終了 ----
@@ -492,7 +493,8 @@
           w: victims[i],
           text: U.pick(SW.LASTWORDS),
           until: at + LASER_FALL + 0.35,
-          keepDead: true
+          keepDead: true,
+          ox: Math.random() * 2 - 1, oy: Math.random()
         });
       }
     }
@@ -650,7 +652,7 @@
       /* 号令 */
       if (state === 'count' || state === 'demo') {
         while (cueIdx < R.cues.length && t >= R.cues[cueIdx].t) {
-          cue(R.cues[cueIdx].s);
+          cue(R.cues[cueIdx].s, R.cues[cueIdx].long);
           cueIdx++;
         }
       }
@@ -766,7 +768,7 @@
       var B = bubbles[i];
       var age = B.until - t;
       var ba = Math.min(1, age / 0.4) * 0.92;
-      R2.drawBubble(B.w, B.text, ba);
+      R2.drawBubble(B.w, B.text, ba, B.ox, B.oy);
     }
 
     /* レーザー */
