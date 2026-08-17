@@ -253,7 +253,9 @@
     for (var i = 0; i < k; i++) {
       var c = makeWalker(900 + W.chasers.length + i, false);
       c.isPacer = true;
-      var ang = Math.PI / 4 + Math.random() * (Math.PI * 1.5);   /* 45°〜315° */
+      /* 全周から湧く（前方±30°も含む）。ただし前方の者は
+       * X座標だけ詰めてレーンは詰めない＝進路は塞がない */
+      var ang = Math.random() * Math.PI * 2;
       c.offA = ang;
       c.biter = Math.random() < 0.35;          /* 一部だけが最後まで詰めてくる */
       c.offR = c.biter ? 1.2 + Math.random() * 3.0
@@ -303,7 +305,18 @@
       c.x += Math.abs(dx) <= step ? dx : (dx > 0 ? step : -step);
       var dl = gl - c.laneF;
       var lstep = (mode === 'crush' ? 0.30 : 0.10) * dt;
-      c.laneF += Math.abs(dl) <= lstep ? dl : (dl > 0 ? lstep : -lstep);
+      if (mode !== 'crush' && c.front) {
+        /* プレイヤーより前にいる間はレーンを詰めない。
+         * 進路上に居座られると走者は当たるしかなくなるため、
+         * むしろ近い場合は道を空けるように横へ退く */
+        var dpl = c.laneF - pl;
+        if (Math.abs(dpl) < 0.14) {
+          var away = dpl >= 0 ? 1 : -1;
+          c.laneF = U.clamp(c.laneF + away * 0.12 * dt, W.LANE_FAR - 0.22, W.LANE_NEAR + 0.12);
+        }
+      } else {
+        c.laneF += Math.abs(dl) <= lstep ? dl : (dl > 0 ? lstep : -lstep);
+      }
       /* 不気味な小刻みの震え */
       c.x += Math.sin(t * 23 + c.jitterSeed) * 0.010;
       c.laneF += Math.sin(t * 31 + c.jitterSeed * 2) * 0.0014;

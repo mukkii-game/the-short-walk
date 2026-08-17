@@ -326,14 +326,14 @@
   }
 
   function drawPoles() {
-    var spacing = 85;
-    var start = Math.floor((camX - 200) / spacing) * spacing;
+    var spacing = 42;
+    var start = Math.floor((camX - 120) / spacing) * spacing;
     var prev = null;
-    for (var x = start; x < camX + 260; x += spacing) {
+    for (var x = start; x < camX + 160; x += spacing) {
       var p = screenOf(x, 0.035);
       /* 塔ごとにわずかに背丈が違う */
       var vary = 0.9 + ((x / spacing) % 3) * 0.08;
-      var H = Ht * 0.46 * vary;
+      var H = Ht * 0.23 * vary;
       var baseY = horizonY() + Ht * 0.012;
       var alpha = 0.62;
       if (p.x > -H && p.x < Wd + H) drawPylon(p.x, baseY, H, alpha);
