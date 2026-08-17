@@ -260,7 +260,10 @@
 
   function onKeyDown(e) {
     if (e.repeat) return;
-    if (e.code === 'Space') e.preventDefault();
+    var typing = document.activeElement &&
+      (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA');
+    if (e.code === 'Space' && !typing) e.preventDefault();
+    if (typing) return;
 
     if (state === 'title') {
       if (e.code === 'KeyC' && e.shiftKey) { G.startCalib(); return; }   /* 隠し: 遅延測定 */
@@ -337,6 +340,8 @@
     A.ambLevel(0.10, 0.6);
     state = 'title';
     R = null;
+    var nt2 = $('nameTitle');
+    if (nt2) nt2.value = U.storage.get('sw_name', '') || '';
     hide('hud'); hide('panelCalib'); hide('panelEnd');
     show('panelTitle');
   };
@@ -346,7 +351,14 @@
    * NPCは時折ひとりごとを言う。人数が減るほど頻繁になる。
    * 動きとは無関係。ただの、人間の声。 */
   function playerName() {
-    return (U.storage.get('sw_name', '') || 'キミ');
+    return U.storage.get('sw_name', '') || '';
+  }
+
+  function fillName(tpl) {
+    var n = playerName();
+    if (n) return tpl.replace(/\{name\}/g, n);
+    /* 空白なら名前の場所ごと畳む。「おい{name}、そら…」→「おい、そら…」 */
+    return tpl.replace(/\{name\}、?/g, '').replace(/^、/, '').replace(/、、/g, '、');
   }
 
   function bubbleTick(t) {
@@ -378,7 +390,7 @@
     /* 3回に1回は、名前を呼んでプレイヤーに話しかけてくる */
     var text;
     if (Math.random() < 0.34) {
-      text = U.pick(SW.CALLOUTS).replace('{name}', playerName());
+      text = fillName(U.pick(SW.CALLOUTS));
     } else {
       text = U.pick(SW.MUTTERS);
     }
@@ -739,9 +751,16 @@
     });
   }
 
+  function saveTitleName() {
+    var el = $('nameTitle');
+    if (el) U.storage.set('sw_name', (el.value || '').slice(0, 8));
+  }
+
   G.boot = function () {
     R2.init($('stage'));
     calOffset = U.storage.get('sw_cal', 0) || 0;
+    var nt = $('nameTitle');
+    if (nt) nt.value = U.storage.get('sw_name', '') || '';
     bindNet();
 
     document.addEventListener('keydown', onKeyDown);
@@ -754,9 +773,9 @@
         fn();
       });
     }
-    btn('btnStart', function () { G.startRun(); });
+    btn('btnStart', function () { saveTitleName(); G.startRun(); });
     btn('btnAgain', function () { G.startRun(); });
-    btn('btnMulti', function () { G.openLobby(); });
+    btn('btnMulti', function () { saveTitleName(); G.openLobby(); });
     btn('btnJoin', function () { joinMatch(); });
     btn('btnGo', function () { SW.net.start(); });
     btn('btnLeave', function () { leaveLobby(); });
