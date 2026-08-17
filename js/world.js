@@ -245,9 +245,9 @@
     for (var i = 0; i < n; i++) {
       var c = makeWalker(900 + i, false);
       c.isPacer = true;
-      /* プレイヤーの横から後ろまでの半円。前からは決して来ない。
-       * 半径を少しずつずらした何重かの弧になる */
-      var ang = Math.PI / 2 + Math.random() * Math.PI;    /* 90°〜270°: 横〜後ろ */
+      /* パックマンのような形。正面±45°だけが口のように開いていて、
+       * 前方斜めからも、横からも、後ろからも寄ってくる */
+      var ang = Math.PI / 4 + Math.random() * (Math.PI * 1.5);   /* 45°〜315° */
       var ring = 7.5 + (i % 4) * 2.6 + Math.random() * 1.8;
       c.x = px + Math.cos(ang) * ring;
       c.laneF = c.laneT = U.clamp(pl + Math.sin(ang) * laneHalf * (ring / 12),

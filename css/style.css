@@ -197,7 +197,7 @@ button:disabled {
 button:disabled:hover { background: #15161b; border-color: #26272e; }
 button.small { font-size: 12px; padding: 11px 14px; color: var(--dim); }
 
-.namelabel { font-size: 13px; color: var(--dim); letter-spacing: 0.1em; margin-bottom: 6px; }
+.namelabel { font-size: 19px; color: #b9b3a6; letter-spacing: 0.12em; margin-bottom: 8px; }
 .namewrap { margin: 0 0 16px; }
 .namein.need { border-color: #c96a55; }
 .namein.need::placeholder { color: #c96a55; }

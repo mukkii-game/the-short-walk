@@ -310,7 +310,7 @@
     }
     if (state === 'calib') { calibTap(); return; }
     if (state === 'chaseend') {
-      if (chase && chase.done && t2ok()) G.toTitle();
+      if (chase && chase.done && !chase.exiting && t2ok()) chase.exiting = A.now();
       return;
     }
     if (state === 'end') {
@@ -324,16 +324,17 @@
     if (state === 'title') { G.startRun(); return; }
     if (state === 'calib') { calibTap(); return; }
     if (state === 'chaseend') {
-      if (chase && chase.done && t2ok()) G.toTitle();
+      if (chase && chase.done && !chase.exiting && t2ok()) chase.exiting = A.now();
       return;
     }
     if (state === 'end') { G.startRun(); return; }
     pressKey(e);
   }
 
-  /* 文字が出てから受け付ける（誤タップで飛ばさない） */
+  /* 文字が出てから受け付ける（誤タップで飛ばさない）。
+   * YOUR LIFE CONTINUES は最低2秒見せる */
   function t2ok() {
-    return A.now() - chase.doneAt > (chase.done === 'end' ? 1.0 : 1.8);
+    return A.now() - chase.doneAt > (chase.done === 'end' ? 1.2 : 2.0);
   }
 
   /* ---- キャリブレーション ---- */
@@ -576,6 +577,25 @@
    *   引き(1.7秒) → 画面の端から小さな群れが集まり、震えながら距離を保つ
    *   → 5秒立ち尽くすと一斉に襲われ、白飛びして END
    *   → 走り続けて全員振り切り、カメラが止まり、白に溶けて LIFE CONTINUES */
+  /* タイトルからラストだけ試す */
+  G.chaseTest = function () {
+    A.panic();
+    A.windStart();
+    A.ambLevel(0.2, 0.6);
+    online = null;
+    R = null;
+    W.create(1, A.now());
+    W.player.x = 0;
+    camX = 0;
+    zoomCur = 1;
+    R2.setZoom(1);
+    R2.setCam(0);
+    hide('panelTitle'); hide('panelCalib'); hide('panelEnd');
+    show('hud');
+    updateHud();
+    beginChase(A.now());
+  };
+
   function beginChase(t) {
     state = 'chase';
     chase = {
@@ -683,6 +703,11 @@
 
     if (state === 'chase' || state === 'chaseend') {
       if (state === 'chase') chaseTick(t, dt);
+      if (state === 'chaseend' && chase && chase.exiting && t - chase.exiting > 1.1) {
+        G.toTitle();
+        draw(t, dt);
+        return;
+      }
       /* 画面は少しずつ引いていく */
       zoomCur += (0.62 - zoomCur) * Math.min(1, dt * 0.16);
       R2.setZoom(zoomCur);
@@ -880,7 +905,8 @@
       if (state === 'chaseend' && chase.done) {
         var hold = t - chase.doneAt;
         if (hold > (chase.done === 'end' ? 0.5 : 1.2)) {
-          g.fillStyle = chase.done === 'end' ? 'rgba(20,20,22,0.92)' : 'rgba(15,15,17,0.95)';
+          var ta = chase.exiting ? U.clamp(1 - (t - chase.exiting) / 1.0, 0, 1) : 1;
+          g.fillStyle = 'rgba(18,18,20,' + (0.93 * ta).toFixed(3) + ')';
           g.font = '400 ' + Math.floor(sz2.w * (chase.done === 'end' ? 0.16 : 0.075)) +
             'px Impact, "Arial Narrow Bold", sans-serif';
           g.textAlign = 'center'; g.textBaseline = 'middle';
@@ -995,6 +1021,7 @@
     });
     btn('btnAgain', function () { G.startRun(); });
     btn('btnMulti', function () { saveTitleName(); G.openLobby(); });
+    btn('btnLast', function () { G.chaseTest(); });
     btn('btnJoin', function () { joinMatch(); });
     btn('btnGo', function () { SW.net.start(); });
     btn('btnLeave', function () { leaveLobby(); });
