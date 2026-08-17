@@ -120,6 +120,7 @@
   /* 参加者を作る。総数 n（プレイヤー含む） */
   W.create = function (n, t0) {
     W.T0 = t0 || 0;
+    W._regBase = 0; W._tv = W.T0; W.speed = SPEED;
     W.walkers = [];
     W.marks = [];
     W.totalDist = 0;
@@ -373,7 +374,18 @@
    * そのため規定位置は「ラウンド開始からの距離」ではなく
    * 「走り出しからの通し距離」で持つ。ラウンドをまたいでも座標が飛ばない。 */
   W.T0 = 0;
-  W.regAt = function (t) { return SPEED * (t - W.T0); };
+  W.speed = SPEED;
+  W._regBase = 0;
+  W._tv = 0;
+
+  /* 行進速度の切り替え。規定位置が飛ばないよう、切替時点を基点に積み上げる */
+  W.setSpeed = function (v, t) {
+    W._regBase = W.regAt(t);
+    W._tv = t;
+    W.speed = v;
+  };
+
+  W.regAt = function (t) { return W._regBase + W.speed * (t - W._tv); };
 
   /* 毎フレーム。t は AudioContext 時刻 */
   W.update = function (R, t, dt) {
@@ -381,7 +393,7 @@
     var reg = W.regAt(t);
     var anchor = W.regAt(R.tEcho);
     var regEnd = W.regAt(R.tEnd);
-    var stepDist = SPEED * R.phraseDur / R.pattern.length;
+    var stepDist = W.speed * R.phraseDur / R.pattern.length;
     var smooth = 1 - Math.pow(0.0009, dt);
 
     for (i = 0; i < W.walkers.length; i++) {

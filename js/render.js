@@ -526,19 +526,6 @@
     /* 手前の腕 */
     arm(armR, elbowR, 1, main, armW);
 
-    /* 先導者の後光。脈打つ白 */
-    if (opts.glow) {
-      var pulse = 0.72 + 0.28 * Math.sin(t * 5.2);
-      var gr = g.createRadialGradient(p.x, fy + (SPR.FOOT * 0.5 - SPR.FOOT) * scale, h * 0.1,
-                                       p.x, fy + (SPR.FOOT * 0.5 - SPR.FOOT) * scale, h * 0.85);
-      gr.addColorStop(0, 'rgba(235,245,255,' + (0.30 * pulse * alpha).toFixed(3) + ')');
-      gr.addColorStop(1, 'rgba(235,245,255,0)');
-      g.fillStyle = gr;
-      g.beginPath();
-      g.arc(p.x, fy + (SPR.FOOT * 0.5 - SPR.FOOT) * scale, h * 0.85, 0, 6.284);
-      g.fill();
-    }
-
     /* 先導者の旗 */
     if (opts.flag) {
       var poleTop = headY - h * 0.95;
@@ -590,34 +577,47 @@
     void t;
   };
 
-  /* NPCの吹き出し。短い一言。 */
+  /* NPCの吹き出し。💬のように頭から横へずらし、とんがり口で本人を指す。
+   * カメラが寄るほど文字も大きくなる */
   R2.drawBubble = function (w, text, alpha) {
     var p = screenOf(w.x, w.laneF);
-    if (p.x < -80 || p.x > Wd + 80) return;
+    if (p.x < -120 || p.x > Wd + 120) return;
     var h = CFG.bodyH * p.ppm;
-    var fs = U.clamp(h * 0.17, 11, 19);
+    var fs = U.clamp(h * 0.19, 11, 30);
+    /* 出す側は本人ごとに固定（毎フレーム揺れないように） */
+    var side = (w.id % 2 === 0) ? 1 : -1;
+    var headX = p.x, headY = p.y - h * 0.98;
+    var cx = p.x + side * h * 0.62;
+
     g.save();
     g.globalAlpha = alpha;
     g.font = fs + 'px "Yu Mincho", "Hiragino Mincho ProN", serif';
     var tw = g.measureText(text).width;
     var pad = fs * 0.45;
-    var bx = p.x - tw / 2 - pad;
-    var by = p.y - h * 1.32 - fs;
     var bw = tw + pad * 2;
     var bh = fs + pad * 1.1;
-    g.fillStyle = 'rgba(10,11,15,0.78)';
+    var bx = cx - bw / 2 + side * bw * 0.18;
+    var by = headY - bh - fs * 0.55;
+
+    g.fillStyle = 'rgba(10,11,15,0.80)';
     g.strokeStyle = 'rgba(210,204,188,0.45)';
     g.lineWidth = 1;
     g.beginPath();
-    if (g.roundRect) g.roundRect(bx, by, bw, bh, 4); else g.rect(bx, by, bw, bh);
+    if (g.roundRect) g.roundRect(bx, by, bw, bh, 5); else g.rect(bx, by, bw, bh);
     g.fill(); g.stroke();
-    /* しっぽ */
+
+    /* とんがり口。吹き出しの根元から本人の頭へ */
+    var rootX = U.clamp(headX + side * fs * 0.9, bx + 6, bx + bw - 6);
     g.beginPath();
-    g.moveTo(p.x - 3, by + bh); g.lineTo(p.x + 3, by + bh); g.lineTo(p.x, by + bh + fs * 0.4);
-    g.closePath(); g.fill();
+    g.moveTo(rootX - fs * 0.32, by + bh - 0.5);
+    g.lineTo(rootX + fs * 0.32, by + bh - 0.5);
+    g.lineTo(headX + side * fs * 0.15, headY);
+    g.closePath();
+    g.fill();
+
     g.fillStyle = '#ded8c8';
     g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.fillText(text, p.x, by + bh / 2);
+    g.fillText(text, bx + bw / 2, by + bh / 2);
     g.restore();
   };
 

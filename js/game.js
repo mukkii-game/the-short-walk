@@ -132,9 +132,8 @@
       var k = r.cfg.groups.length > 1 ? (r.slotsDemo[i].g === 0 ? 'R' : 'L') : 'R';
       A.step(r.slotsDemo[i].t, k, 0.75);
     }
-    /* 号令の音。数える一発ごとに低い音、STARTは重い一撃 */
-    for (i = 0; i < r.cues.length - 1; i++) A.ui(r.cues[i].t);
-    A.thud(r.cues[r.cues.length - 1].t);
+    /* 号令は表示のみ。音を鳴らすと拍の手がかりになってしまうし、
+     * 覚えたリズムの上に別の音が被さって邪魔になる */
     A.bedStart(r.t0);
   }
 
@@ -170,6 +169,9 @@
 
   function startRound() {
     R = buildRound(roundIdx);
+    /* ラウンドが進むほど行進は速くなる。歩幅も背景の流れも一緒に上がり、
+     * 終盤はわずかなズレが大きな距離になって見える */
+    W.setSpeed(SW.WALK_SPEED * (1 + roundIdx * 0.13), A.now());
     presses = [];
     cueIdx = 0;
     roundEndAt = -1;
@@ -446,7 +448,7 @@
 
       /* 人数が減るほどカメラが寄る。最後の二人はかなり大きい */
       var n = Math.max(2, W.aliveCount());
-      var zTarget = U.clamp(1 + (12 - n) * 0.065, 1, 1.65);
+      var zTarget = U.clamp(1 + (12 - n) * 0.09, 1, 1.95);
       zoomCur += (zTarget - zoomCur) * Math.min(1, dt * 1.2);
       R2.setZoom(zoomCur);
 
@@ -471,22 +473,28 @@
     R2.drawMarks();
 
     /* 先導者: 提示と判決で見え、号令で薄れ、無音で消える。
-     * 視認モードでは無音中も薄い影として位置と動きが確認できる */
-    var pTarget = state === 'black' ? (visMode ? 0.22 : 0) : (state === 'count' ? 0.25 : 1);
+     * ただし無音に入って最初の1フレーズだけは薄い姿が残り、
+     * そのフレーズが終わる頃にフェードアウトする（入りのアシスト）。
+     * 視認モードでは以降もずっと薄い影が残る */
+    var pTarget;
+    if (state === 'black') {
+      var assist = R ? U.clamp(1 - (t - R.tGo) / R.phraseDur, 0, 1) : 0;
+      pTarget = Math.max(visMode ? 0.22 : 0, 0.30 * assist);
+    } else {
+      pTarget = state === 'count' ? 0.25 : 1;
+    }
     pacerAlpha += (pTarget - pacerAlpha) * Math.min(1, dt * (state === 'verdict' ? 4.5 : 2.2));
     var pacerOpts = { alpha: pacerAlpha, flag: 'rgba(224,244,255,0.94)', glow: true, scale: 1.30 };
 
-    var list = W.walkers, pl = W.player, i, w;
-    var drewPacer = false;
+    /* 描画順は毎フレーム laneF で並べ直す。奥から描き、画面の下にいる者ほど手前。
+     * 列の詰め直しの最中に配列順と実際の前後関係がズレて重なりが崩れるため */
+    var list = W.walkers.slice(), i, w;
+    if (pacerAlpha > 0.02) list.push(W.pacer);
+    list.sort(function (a, b) { return a.laneF - b.laneF; });
     for (i = 0; i < list.length; i++) {
       w = list[i];
-      if (!drewPacer && W.pacer.laneF <= w.laneF) {
-        if (pacerAlpha > 0.02) R2.drawWalker(W.pacer, t, pacerOpts);
-        drewPacer = true;
-      }
-      R2.drawWalker(w, t, {});
+      R2.drawWalker(w, t, w === W.pacer ? pacerOpts : {});
     }
-    if (!drewPacer && pacerAlpha > 0.02) R2.drawWalker(W.pacer, t, pacerOpts);
 
     /* 吹き出し */
     for (i = 0; i < bubbles.length; i++) {
