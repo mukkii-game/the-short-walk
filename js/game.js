@@ -393,6 +393,19 @@
     return tpl.replace(/\{name\}、?/g, '').replace(/^、/, '').replace(/、、/g, '、');
   }
 
+  /* 表示中の吹き出しが使っていない高さの段を選ぶ。重なりを減らす */
+  function pickBubbleTier() {
+    var used = [0, 0, 0];
+    for (var i = 0; i < bubbles.length; i++) {
+      var tier = Math.round((bubbles[i].oy || 0) * 2);
+      used[Math.max(0, Math.min(2, tier))]++;
+    }
+    var best = 0;
+    if (used[1] < used[best]) best = 1;
+    if (used[2] < used[best]) best = 2;
+    return best / 2;
+  }
+
   function bubbleTick(t) {
     for (var i = bubbles.length - 1; i >= 0; i--) {
       if (t > bubbles[i].until || (!bubbles[i].w.alive && !bubbles[i].keepDead)) bubbles.splice(i, 1);
@@ -404,7 +417,7 @@
       if (dw.duelLevel && dw.alive && dw.duelSegs && dw.duelSegs.length &&
           t >= dw.duelSegs[0].t) {
         var seg = dw.duelSegs.shift();
-        bubbles.push({ w: dw, text: U.pick(SW.PANIC), until: t + 1.9, ox: Math.random() * 2 - 1, oy: Math.random() });
+        bubbles.push({ w: dw, text: U.pick(SW.PANIC), until: t + 2.8, ox: Math.random() * 2 - 1, oy: pickBubbleTier() });
         if (seg.mode === 'run' && Math.random() < 0.6) {
           dw.laneT = W.LANE_NEAR - W.LANE_GAP * 0.5;   /* すぐ隣 */
         } else if (seg.mode === 'walk' && dw.homeLane != null) {
@@ -432,7 +445,7 @@
     } else {
       text = U.pick(SW.MUTTERS);
     }
-    bubbles.push({ w: w2, text: text, until: t + 2.6, ox: Math.random() * 2 - 1, oy: Math.random() });
+    bubbles.push({ w: w2, text: text, until: t + 3.6, ox: Math.random() * 2 - 1, oy: pickBubbleTier() });
   }
 
   /* ---- 判決・終了 ----
@@ -492,9 +505,9 @@
         bubbles.push({
           w: victims[i],
           text: U.pick(SW.LASTWORDS),
-          until: at + LASER_FALL + 0.35,
+          until: at + LASER_FALL + 0.7,
           keepDead: true,
-          ox: Math.random() * 2 - 1, oy: Math.random()
+          ox: Math.random() * 2 - 1, oy: pickBubbleTier()
         });
       }
     }
