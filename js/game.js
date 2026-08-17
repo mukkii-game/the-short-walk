@@ -684,7 +684,7 @@
         verdictTick(t);
         if (playerDeadAt > 0 && t - playerDeadAt > 1.6) {
           endRun(false);
-        } else if (playerDeadAt < 0 && t >= verdictDone) {
+        } else if (playerDeadAt < 0 && !verdictPending && verdictDone > 0 && t >= verdictDone) {
           if (W.aliveCount() <= 1) {
             endRun(true);
           } else if (roundIdx >= TOTAL_ROUNDS - 1) {
@@ -895,7 +895,17 @@
         fn();
       });
     }
-    btn('btnStart', function () { saveTitleName(); G.startRun(); });
+    btn('btnStart', function () {
+      var nt3 = $('nameTitle');
+      if (nt3 && !(nt3.value || '').trim()) {
+        nt3.classList.add('need');
+        nt3.placeholder = 'ナマエ ヲ イレロ';
+        nt3.focus();
+        return;
+      }
+      saveTitleName();
+      G.startRun();
+    });
     btn('btnAgain', function () { G.startRun(); });
     btn('btnMulti', function () { saveTitleName(); G.openLobby(); });
     btn('btnJoin', function () { joinMatch(); });

@@ -327,6 +327,12 @@
     var fx = p.x - size / 2;
     var fy = p.y - SPR.FOOT * scale;
 
+    /* 一歩ごとの弾み。踏んだ瞬間に少し沈み、蹴りで浮く */
+    if (!w.dead) {
+      var bi = U.clamp((t - w.lastStepT) / U.clamp(w.pace || 0.6, 0.15, 1.4), 0, 1);
+      fy -= Math.sin(Math.PI * bi) * h * 0.055;
+    }
+
     var fog = U.clamp(1 - laneT(w.laneF) * 1.25, 0, 0.55);
     var alpha = (opts.alpha == null ? 1 : opts.alpha) * (1 - fog * 0.5);
 

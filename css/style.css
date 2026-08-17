@@ -193,6 +193,8 @@ button:hover { background: #232630; border-color: #56566a; }
 button.small { font-size: 12px; padding: 11px 14px; color: var(--dim); }
 
 .namewrap { margin: 0 0 16px; }
+.namein.need { border-color: #c96a55; }
+.namein.need::placeholder { color: #c96a55; }
 .namein {
   font: inherit; font-size: 20px; text-align: center;
   letter-spacing: 0.14em;

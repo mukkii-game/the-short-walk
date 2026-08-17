@@ -362,6 +362,10 @@
   W.beginRound = function (R) {
     var i;
 
+    /* 提示・カウント中に地面を刻みで進めるための、手本の拍時刻表 */
+    R.guideTimes = R.slotsDemo.concat(R.slotsCount).map(function (s2) { return s2.t; });
+    R._gi = 0;
+
     /* 群衆全体の流れ。
      * 個々のズレを対称に配ると「群衆の真ん中＝正解」になってしまう。
      * ラウンドごとに全員へ同じ向きのバイアスをかけ、
@@ -544,6 +548,13 @@
     var regEnd = W.regAt(R.tEnd);
     var stepDist = W.speed * R.phraseDur / R.pattern.length;
     var smooth = 1 - Math.pow(0.0009, dt);
+
+    /* 提示・カウントの間は、規定位置も手本の刻みで進む（地面が拍で動く）。
+     * フレーズ境界で連続量と一致するので、断絶への受け渡しで飛ばない */
+    if (R.guideTimes && t >= R.t0 && t < R.tEcho) {
+      while (R._gi < R.guideTimes.length && R.guideTimes[R._gi] <= t) R._gi++;
+      reg = W.regAt(R.t0) + R._gi * stepDist;
+    }
 
     for (i = 0; i < W.walkers.length; i++) {
       w = W.walkers[i];
