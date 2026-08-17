@@ -470,27 +470,35 @@
       var LV = w.duelLevel;
       /* 全力(1.0)の相手は最後ほぼ戻ってくるが、途中で壊れた者(0.7)は
        * 大きく外れたまま終わりがちにする。プレイヤーより先に死ぬ壁になる */
-      var duelBias = LV < 1 ? (Math.random() < 0.5 ? -1 : 1) * (2.0 + Math.random() * 1.2) : 0;
+      /* 3名戦のズレ役は大きく外し(±3.5〜5.5m)、
+       * 最終決戦の相手も終盤に壊れて外れて終わる(±1.3〜2.4m) */
+      var duelBias = (Math.random() < 0.5 ? -1 : 1) *
+        (LV < 1 ? (3.5 + Math.random() * 2.0) : (1.3 + Math.random() * 1.1));
       w.duelSegs = [];
       var stepD = W.speed * R.phraseDur / R.pattern.length;   /* 一歩の距離 */
       var out = [];
       var lastT = R.tGo;
       var segIdx = 0;
+      /* 全力の相手は途中までほぼ正確に歩き、終盤に入ってから壊れる */
+      var chaosFrom = LV >= 1 ? R.tGo + (R.tEnd - R.tGo) * 0.6 : R.tGo;
       while (lastT < R.tEnd) {
         /* 実際に出した歩数から、いまの正確なズレを出す。
          * 見積りで回すと誤差が蓄積して、終盤に沈んだまま戻れなくなる */
         var devNow = out.length * stepD - W.speed * (lastT - R.tGo);
-        var mode = segIdx % 3 === 1 ? 'run' : (segIdx % 3 === 2 ? 'stop' : 'walk');
+        var mode = lastT < chaosFrom ? 'walk'
+                 : segIdx % 3 === 1 ? 'run' : (segIdx % 3 === 2 ? 'stop' : 'walk');
         /* 大きく置いていかれているときは、止まらずに走って戻る */
         if (mode === 'stop' && devNow < duelBias - 1.6 * LV) mode = 'run';
         if (mode === 'run' && devNow > duelBias + 1.6 * LV) mode = 'stop';
         var dur = mode === 'stop' ? 0.5 + Math.random() * 0.5
                 : mode === 'run' ? 1.0 + Math.random() * 1.0
                 : 2.0 + Math.random() * 2.0;
-        if (segIdx > 0) w.duelSegs.push({ t: lastT, mode: mode });
+        if (segIdx > 0 && lastT >= chaosFrom) w.duelSegs.push({ t: lastT, mode: mode });
         var rate = mode === 'run' ? 1 + (0.5 + Math.random() * 0.45) * LV
                  : mode === 'stop' ? 0
-                 : U.clamp(1 - (devNow - duelBias) * (LV < 1 ? 0.9 : 0.5), 1 - 0.4 * LV, 1 + 0.45 * LV);
+                 : (lastT < chaosFrom
+                     ? U.clamp(1 - devNow * 0.6, 0.9, 1.1)
+                     : U.clamp(1 - (devNow - duelBias) * 0.9, 1 - 0.4 * LV, 1 + 0.45 * LV));
         if (rate > 0.2) {
           var interval = (R.phraseDur / R.pattern.length) / rate;
           for (var tt = lastT; tt < Math.min(lastT + dur, R.tEnd); tt += interval) {
@@ -505,7 +513,7 @@
        * 足りなければ末尾で帳尻を合わせる:
        *   前のめりに外れる → 最後に駆け込みの連打
        *   後ろに外れる     → 最後の数歩を踏まず、立ち尽くす */
-      if (LV < 1) {
+      {
         var devFin = out.length * stepD - W.speed * (R.tEnd - R.tGo);
         var want = duelBias;
         var diff = want - devFin;
