@@ -190,8 +190,14 @@ button {
   transition: background .15s, border-color .15s;
 }
 button:hover { background: #232630; border-color: #56566a; }
+button:disabled {
+  color: #56534c; background: #15161b; border-color: #26272e;
+  cursor: default;
+}
+button:disabled:hover { background: #15161b; border-color: #26272e; }
 button.small { font-size: 12px; padding: 11px 14px; color: var(--dim); }
 
+.namelabel { font-size: 13px; color: var(--dim); letter-spacing: 0.1em; margin-bottom: 6px; }
 .namewrap { margin: 0 0 16px; }
 .namein.need { border-color: #c96a55; }
 .namein.need::placeholder { color: #c96a55; }
