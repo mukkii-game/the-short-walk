@@ -560,12 +560,11 @@
 
   function beginChase(t) {
     state = 'chase';
-    chase = { t0: t, camFix: camX, speed: 3.2, done: null, doneAt: 0 };
-    W.spawnChasers(14, t);
+    chase = { t0: t, camFix: camX, speed: 2.4, done: null, doneAt: 0 };
+    W.spawnChasers(38, t);
     A.bedStop();
     A.ambLevel(0.34, 2.0);
     cue('ユウショウ', true);
-    setTimeout(function () { toast('ニゲロ', 1800); }, 1600);
   }
 
   function chaseTick(t, dt) {
@@ -641,7 +640,7 @@
     if (state === 'chase') {
       chaseTick(t, dt);
       /* カメラは固定。画面はじょじょに引いていく */
-      zoomCur += (0.85 - zoomCur) * Math.min(1, dt * 0.5);
+      zoomCur += (0.72 - zoomCur) * Math.min(1, dt * 0.22);
       R2.setZoom(zoomCur);
       R2.setCam(chase.camFix);
       if (chase.done && t - chase.doneAt > 1.2) endChase();

@@ -240,15 +240,27 @@
 
   W.spawnChasers = function (n, t) {
     W.chasers = [];
-    for (var i = 0; i < n; i++) {
-      var c = makeWalker(900 + i, false);
+    var px = W.player.x, pl = W.player.laneF;
+    var made = 0, guard = 0;
+    while (made < n && guard++ < n * 30) {
+      /* 四方八方から。ただし進行方向の正面だけは帯状に空けておく。
+       * その隙間に気づいた者だけが、連打で抜けられる */
+      var dx = (Math.random() * 2 - 1) * 16;
+      var lane = W.LANE_FAR - 0.16 + Math.random() * (W.LANE_NEAR - W.LANE_FAR + 0.24);
+      if (dx > 0 && Math.abs(lane - pl) < 0.30) continue;   /* 前方の空隙 */
+      if (Math.abs(dx) < 5 && Math.abs(lane - pl) < 0.12) continue;
+      var c = makeWalker(900 + made, false);
       c.isPacer = true;
-      /* 画面奥の道の端から、ばらばらと湧いて駆け寄ってくる */
-      c.x = W.player.x - 6 + Math.random() * 14;
-      c.laneF = c.laneT = W.LANE_FAR - 0.12 - Math.random() * 0.10;
+      c.x = px + dx;
+      c.laneF = c.laneT = lane;
+      /* 後ろの者は「追う」。前と奥の者は「輪を縮める」。
+       * 全員が走者を直接追うと、正面の隙間が定義ごと消えてしまう */
+      c.hunts = dx < -2;
+      c.tx = px; c.tl = pl;                    /* 輪の中心（優勝の座標） */
       c.lastStepT = t; c.pace = 0.4;
-      c.chaseDelay = Math.random() * 1.6;      /* 湧き出しの時間差 */
+      c.chaseDelay = Math.random() * 2.0;
       W.chasers.push(c);
+      made++;
     }
   };
 
@@ -257,15 +269,15 @@
     for (var i = 0; i < W.chasers.length; i++) {
       var c = W.chasers[i];
       if (c.chaseDelay > 0) { c.chaseDelay -= dt; continue; }
-      /* プレイヤーへまっすぐ詰める。奥から手前へ、レーンも距離も */
-      var dx = px - c.x;
-      var step = speed * dt;
+      var gx = c.hunts ? px : c.tx;
+      var gl = c.hunts ? pl : c.tl;
+      var dx = gx - c.x;
+      var step = speed * dt * (c.hunts ? 1 : 0.8);
       c.x += Math.abs(dx) <= step ? dx : (dx > 0 ? step : -step);
-      var dl = pl - c.laneF;
-      var lstep = 0.16 * dt * (0.7 + speed * 0.12);
+      var dl = gl - c.laneF;
+      var lstep = 0.085 * dt * (0.7 + speed * 0.10);
       c.laneF += Math.abs(dl) <= lstep ? dl : (dl > 0 ? lstep : -lstep);
       c.laneT = c.laneF;
-      /* 駆け足の脚 */
       if (t - c.lastStepT > 0.75 / Math.max(1, speed)) {
         W.registerStep(c, t, 'R');
         c.pace = 0.75 / Math.max(1, speed);
