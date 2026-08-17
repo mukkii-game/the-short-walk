@@ -276,27 +276,87 @@
     }
   }
 
-  function drawPoles() {
-    var hy = horizonY();
-    var spacing = 26;
-    var start = Math.floor((camX - 60) / spacing) * spacing;
-    g.strokeStyle = 'rgba(20,20,26,0.55)';
-    for (var x = start; x < camX + 120; x += spacing) {
-      var p = screenOf(x, 0.06);
-      if (p.x < -60 || p.x > Wd + 60) continue;
-      var h = 78 * p.s * 1.9;
-      g.lineWidth = Math.max(1, 2.4 * p.s);
-      g.beginPath();
-      g.moveTo(p.x, p.y);
-      g.lineTo(p.x, p.y - h);
-      g.moveTo(p.x - h * 0.14, p.y - h * 0.86);
-      g.lineTo(p.x + h * 0.14, p.y - h * 0.86);
-      g.stroke();
+  /* 送電鉄塔。荒野を行進する巨人の群れ。
+   * アイスランドの「巨人型鉄塔」のイメージ: 二本脚で立ち、
+   * 肩のように広がった腕から送電線を提げて、地平線の彼方まで続いている。
+   * 色は沈めて、あくまで背景の影として */
+  function drawPylon(x, baseY, H, alpha) {
+    var lw = Math.max(1, H * 0.012);
+    g.strokeStyle = 'rgba(26,27,33,' + alpha.toFixed(3) + ')';
+    g.lineWidth = lw;
+
+    var legSpread = H * 0.17;
+    var waistY = baseY - H * 0.52;
+    var waistW = H * 0.055;
+    var shoulderY = baseY - H * 0.70;
+    var armSpan = H * 0.30;
+    var headY = baseY - H * 0.92;
+    var topY = baseY - H;
+
+    /* 脚（ハの字）と胴 */
+    g.beginPath();
+    g.moveTo(x - legSpread, baseY); g.lineTo(x - waistW, waistY); g.lineTo(x - waistW * 0.7, shoulderY);
+    g.moveTo(x + legSpread, baseY); g.lineTo(x + waistW, waistY); g.lineTo(x + waistW * 0.7, shoulderY);
+    /* 肩と頭部 */
+    g.moveTo(x - armSpan, shoulderY); g.lineTo(x + armSpan, shoulderY);
+    g.moveTo(x - waistW * 0.7, shoulderY); g.lineTo(x - waistW * 0.4, headY);
+    g.moveTo(x + waistW * 0.7, shoulderY); g.lineTo(x + waistW * 0.4, headY);
+    g.moveTo(x - H * 0.10, headY); g.lineTo(x + H * 0.10, headY);
+    g.moveTo(x - waistW * 0.4, headY); g.lineTo(x, topY);
+    g.moveTo(x + waistW * 0.4, headY); g.lineTo(x, topY);
+    g.stroke();
+
+    /* 格子のブレース */
+    g.lineWidth = lw * 0.6;
+    g.beginPath();
+    var n = 4;
+    for (var i = 0; i < n; i++) {
+      var t0 = i / n, t1 = (i + 1) / n;
+      var y0 = baseY + (waistY - baseY) * t0;
+      var y1 = baseY + (waistY - baseY) * t1;
+      var w0 = legSpread + (waistW - legSpread) * t0;
+      var w1 = legSpread + (waistW - legSpread) * t1;
+      g.moveTo(x - w0, y0); g.lineTo(x + w1, y1);
+      g.moveTo(x + w0, y0); g.lineTo(x - w1, y1);
     }
-    void hy;
+    /* 腕の吊り碍子 */
+    g.moveTo(x - armSpan * 0.85, shoulderY); g.lineTo(x - armSpan * 0.85, shoulderY + H * 0.05);
+    g.moveTo(x + armSpan * 0.85, shoulderY); g.lineTo(x + armSpan * 0.85, shoulderY + H * 0.05);
+    g.stroke();
   }
 
-  /* ---- キャラクター ---- */
+  function drawPoles() {
+    var spacing = 85;
+    var start = Math.floor((camX - 200) / spacing) * spacing;
+    var prev = null;
+    for (var x = start; x < camX + 260; x += spacing) {
+      var p = screenOf(x, 0.035);
+      /* 塔ごとにわずかに背丈が違う */
+      var vary = 0.9 + ((x / spacing) % 3) * 0.08;
+      var H = Ht * 0.46 * vary;
+      var baseY = horizonY() + Ht * 0.012;
+      var alpha = 0.62;
+      if (p.x > -H && p.x < Wd + H) drawPylon(p.x, baseY, H, alpha);
+
+      /* 送電線。肩から肩へ、たるんで垂れる */
+      if (prev) {
+        g.strokeStyle = 'rgba(26,27,33,0.34)';
+        g.lineWidth = Math.max(0.6, H * 0.004);
+        var y1 = baseY - H * 0.70;
+        var y0 = prev.baseY - prev.H * 0.70;
+        var sag = Math.abs(p.x - prev.x) * 0.10;
+        g.beginPath();
+        g.moveTo(prev.x - prev.H * 0.26, y0);
+        g.quadraticCurveTo((prev.x + p.x) / 2 - H * 0.26, Math.max(y0, y1) + sag, p.x - H * 0.26, y1);
+        g.moveTo(prev.x + prev.H * 0.26, y0);
+        g.quadraticCurveTo((prev.x + p.x) / 2 + H * 0.26, Math.max(y0, y1) + sag, p.x + H * 0.26, y1);
+        g.stroke();
+      }
+      prev = { x: p.x, baseY: baseY, H: H };
+    }
+  }
+
+  /* ---- キャラクター ---- */  /* ---- キャラクター ---- */
 
   function raiseAmt(dt, dur) {
     if (dt < 0) return 0;
