@@ -143,14 +143,20 @@
     /* 精鋭を必ず2人仕込む。ペースメーカーにほぼ合わせ切る者と、それに近い者。
      * ランダムに任せると全員凡庸な回ができてしまい、
      * 「最後の二人」の勝負（かなり正確でないと勝てない）が成立しない。 */
-    var elite = W.walkers[W.walkers.length - 1];
-    elite.type = 'elite'; elite.tier = 11;
-    elite.sigma0 = 0.030; elite.bias = (Math.random() < 0.5 ? -1 : 1) * 0.006;
-    elite.patErr = 0.003; elite.dropRate = 0.001; elite.panicBase = 0.018; elite.sway = 0.15;
-    var second = W.walkers[W.walkers.length - 2];
-    second.type = 'steady'; second.tier = 9;
-    second.sigma0 = 0.040; second.bias = (Math.random() < 0.5 ? -1 : 1) * 0.011;
-    second.patErr = 0.006; second.dropRate = 0.002; second.panicBase = 0.022; second.sway = 0.3;
+    /* NPCが居るときだけ精鋭を仕込む（1人テスト起動などで存在しない仲間を触らない） */
+    var npcCount = W.walkers.length - 1;
+    if (npcCount >= 1) {
+      var elite = W.walkers[W.walkers.length - 1];
+      elite.type = 'elite'; elite.tier = 11;
+      elite.sigma0 = 0.030; elite.bias = (Math.random() < 0.5 ? -1 : 1) * 0.006;
+      elite.patErr = 0.003; elite.dropRate = 0.001; elite.panicBase = 0.018; elite.sway = 0.15;
+    }
+    if (npcCount >= 2) {
+      var second = W.walkers[W.walkers.length - 2];
+      second.type = 'steady'; second.tier = 9;
+      second.sigma0 = 0.040; second.bias = (Math.random() < 0.5 ? -1 : 1) * 0.011;
+      second.patErr = 0.006; second.dropRate = 0.002; second.panicBase = 0.022; second.sway = 0.3;
+    }
 
     /* 先導者（ペースメーカー） */
     var pc = makeWalker(0, false);
