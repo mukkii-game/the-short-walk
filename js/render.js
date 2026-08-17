@@ -76,6 +76,21 @@
 
   R2.spriteOk = function () { return SPR.ok; };
 
+  /* シート全体の灰色版。死体の変色とシミに使う */
+  var silCanvas = null;
+  function silhouette() {
+    if (silCanvas || !SPR.ok) return silCanvas;
+    var c = document.createElement('canvas');
+    c.width = SPR.img.width; c.height = SPR.img.height;
+    var cg = c.getContext('2d');
+    cg.drawImage(SPR.img, 0, 0);
+    cg.globalCompositeOperation = 'source-in';
+    cg.fillStyle = '#4a4a4e';
+    cg.fillRect(0, 0, c.width, c.height);
+    silCanvas = c;
+    return silCanvas;
+  }
+
   function spriteRowFor(w) {
     if (w.isPacer) return 0;
     if (w.isPlayer) return 1;
@@ -119,7 +134,13 @@
   function horizonY() { return Ht * CFG.horizonF; }
   function groundY() { return Ht * CFG.groundF; }
 
-  function laneT(laneF) { return Math.pow(U.clamp(laneF, 0, 1), CFG.laneCurve); }
+  function laneT(laneF) {
+    var t = Math.pow(U.clamp(laneF, 0, 1), CFG.laneCurve);
+    /* カメラが寄るほど地面も近づく疑似表現。
+     * 奥のレーンを画面下（手前）へ引き寄せ、路面の専有面積を増やす */
+    var pull = (1 - 1 / zoom) * 0.55;
+    return U.lerp(t, 1, pull);
+  }
 
   function screenOf(x, laneF) {
     var t = laneT(laneF);
@@ -309,32 +330,53 @@
     var fog = U.clamp(1 - laneT(w.laneF) * 1.25, 0, 0.55);
     var alpha = (opts.alpha == null ? 1 : opts.alpha) * (1 - fog * 0.5);
 
-    /* 倒れた者: 潰れて薄れる */
-    var squash = 1;
+    /* 死に様。
+     * 衝撃で跳ね上がり、回転しながら落ち、うつ伏せに突っ伏す。
+     * 血は流さない。やがて灰色の、人の形をしたシミだけが残る。 */
+    var rot = 0, lieMix = 0;
     if (w.dead) {
       var ddt = t - w.deathT;
       if (ddt > 2.2) return;
-      squash = U.clamp(1 - ddt / 0.55, 0.06, 1);
-      alpha *= U.clamp(1 - (ddt - 0.55) / 1.5, 0, 1);
+      if (ddt < 0.5) {
+        /* 打ち上げ */
+        var fp = ddt / 0.5;
+        fy -= Math.sin(Math.PI * fp) * h * 0.95;
+        rot = fp * Math.PI / 2 * (w.id % 2 === 0 ? 1 : -1);
+      } else {
+        rot = Math.PI / 2 * (w.id % 2 === 0 ? 1 : -1);
+        lieMix = U.clamp((ddt - 0.8) / 1.2, 0, 1);   /* 徐々に灰色のシミへ */
+        alpha *= 1 - lieMix * 0.35;
+      }
     }
 
     g.save();
     g.imageSmoothingEnabled = false;
     g.globalAlpha = alpha;
-    if (squash < 1) {
-      g.translate(p.x, p.y);
-      g.scale(1, squash);
-      g.translate(-p.x, -p.y);
-    }
-    /* 足元の影 */
-    g.fillStyle = 'rgba(0,0,0,0.30)';
+
+    /* 足元の影（死んでいれば消えていく） */
+    g.fillStyle = 'rgba(0,0,0,' + (0.30 * (1 - lieMix)).toFixed(3) + ')';
     g.beginPath();
     g.ellipse(p.x, p.y, h * 0.16, h * 0.035, 0, 0, Math.PI * 2);
     g.fill();
 
+    if (rot !== 0) {
+      /* 回転描画。軸はキャラの中心 */
+      var cx2 = p.x, cy2 = fy + SPR.FOOT * scale * 0.5;
+      g.translate(cx2, cy2);
+      g.rotate(rot);
+      g.translate(-cx2, -cy2);
+    }
     g.drawImage(SPR.img,
       fr * SPR.CELL, row * SPR.CELL, SPR.CELL, SPR.CELL,
       fx, fy, size, size);
+    if (lieMix > 0) {
+      /* 灰色の影が体を覆っていく */
+      g.globalAlpha = alpha * lieMix;
+      g.globalCompositeOperation = 'source-atop';
+      var sil = silhouette();
+      if (sil) g.drawImage(sil, fr * SPR.CELL, row * SPR.CELL, SPR.CELL, SPR.CELL, fx, fy, size, size);
+      g.globalCompositeOperation = 'source-over';
+    }
 
     /* 先導者の後光。脈打つ白 */
     if (opts.glow) {
@@ -632,18 +674,37 @@
     g.restore();
   };
 
+  /* 路面のシミ。人の形のまま、灰色に残る */
   R2.drawMarks = function () {
+    var sil = silhouette();
     for (var i = 0; i < SW.world.marks.length; i++) {
       var m = SW.world.marks[i];
       var p = screenOf(m.x, m.laneF);
-      if (p.x < -30 || p.x > Wd + 30) continue;
+      if (p.x < -80 || p.x > Wd + 80) continue;
       var h = CFG.bodyH * p.ppm;
-      g.globalAlpha = 0.30;
-      g.fillStyle = m.color;
-      g.beginPath();
-      g.ellipse(p.x, p.y, h * 0.19, h * 0.042, 0, 0, Math.PI * 2);
-      g.fill();
-      g.globalAlpha = 1;
+      if (sil && m.id != null && SPR.rows > 2) {
+        var row = m.isPlayer ? 1 : 2 + ((m.id * 7919 + 13) % (SPR.rows - 2));
+        var scale = h / SPR.BODY_H;
+        var size = SPR.CELL * scale;
+        var cy2 = p.y - SPR.FOOT * scale * 0.5;
+        g.save();
+        g.imageSmoothingEnabled = false;
+        g.globalAlpha = 0.30;
+        g.translate(p.x, cy2);
+        g.rotate(m.rot || Math.PI / 2);
+        g.scale(1, 0.55);                      /* 平らに潰れたように */
+        g.translate(-p.x, -cy2);
+        g.drawImage(sil, 2 * SPR.CELL, row * SPR.CELL, SPR.CELL, SPR.CELL,
+          p.x - size / 2, p.y - SPR.FOOT * scale, size, size);
+        g.restore();
+      } else {
+        g.globalAlpha = 0.28;
+        g.fillStyle = '#3c3c40';
+        g.beginPath();
+        g.ellipse(p.x, p.y, h * 0.19, h * 0.042, 0, 0, Math.PI * 2);
+        g.fill();
+        g.globalAlpha = 1;
+      }
     }
   };
 

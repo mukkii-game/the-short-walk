@@ -28,6 +28,7 @@
   var playerDeadAt = -1;
   var roundEndAt = -1;
   var lasers = [];           /* 執行中のレーザー: {w, at} */
+  var debris = [];           /* 衝撃で散る破片: {x,y,vx,vy,life} 画面座標 */
   var verdictDone = -1;
   var zoomCur = 1;
   var visMode = false;       /* 視認モード: 先導者が無音中も薄く見える */
@@ -337,16 +338,13 @@
    *
    * NPCは時折ひとりごとを言う。人数が減るほど頻繁になる。
    * 動きとは無関係。ただの、人間の声。 */
-  var LINES = [
-    'こわいよ…', 'おそいかな', 'あうう', 'きみ、なまえは？',
-    'しにたくないよ', 'もうだめかも', 'あしがいたい', 'かえりたい',
-    'ねむい…', 'まだいける', 'ごめんなさい', 'ここどこ…',
-    'みずのみたい', 'だれかいる？', 'ちゃんとあるけてる？', 'おいていかないで'
-  ];
+  function playerName() {
+    return (U.storage.get('sw_name', '') || 'キミ');
+  }
 
   function bubbleTick(t) {
     for (var i = bubbles.length - 1; i >= 0; i--) {
-      if (t > bubbles[i].until || !bubbles[i].w.alive) bubbles.splice(i, 1);
+      if (t > bubbles[i].until || (!bubbles[i].w.alive && !bubbles[i].keepDead)) bubbles.splice(i, 1);
     }
     if (t < nextBubbleAt) return;
     var pool = [];
@@ -361,7 +359,14 @@
     var hi = n <= 3 ? 3.6 : (n <= 5 ? 5.5 : 9.0);
     nextBubbleAt = t + U.rand(lo, hi);
     var w2 = pool[Math.floor(Math.random() * pool.length)];
-    bubbles.push({ w: w2, text: U.pick(LINES), until: t + 2.4 });
+    /* 3回に1回は、名前を呼んでプレイヤーに話しかけてくる */
+    var text;
+    if (Math.random() < 0.34) {
+      text = U.pick(SW.CALLOUTS).replace('{name}', playerName());
+    } else {
+      text = U.pick(SW.MUTTERS);
+    }
+    bubbles.push({ w: w2, text: text, until: t + 2.6 });
   }
 
   /* ---- 判決・終了 ----
@@ -402,7 +407,17 @@
   function scheduleLasers(t, victims) {
     lasers = [];
     for (var i = 0; i < victims.length; i++) {
-      lasers.push({ w: victims[i], at: t + 1.1 + i * LASER_GAP, hit: false });
+      var at = t + 1.1 + i * LASER_GAP;
+      lasers.push({ w: victims[i], at: at, hit: false });
+      /* 今際の際のひとこと。レーザーが落ちる寸前に叫ぶ */
+      if (!victims[i].isPlayer) {
+        bubbles.push({
+          w: victims[i],
+          text: U.pick(SW.LASTWORDS),
+          until: at + LASER_FALL + 0.35,
+          keepDead: true
+        });
+      }
     }
     verdictDone = t + 1.1 + victims.length * LASER_GAP + 1.2;
   }
@@ -414,6 +429,7 @@
         L.hit = true;
         W.kill(L.w, t);
         A.zap(t);
+        spawnDebris(L.w);
         if (L.w.isPlayer) {
           playerDeadAt = t;
           flash = 0.7;
@@ -422,6 +438,22 @@
         updateHud();
       }
     }
+  }
+
+  /* 衝撃の破片。血ではなく、砕けた路面と埃。灰色 */
+  function spawnDebris(w) {
+    var p = R2.screenOf(w.x, w.laneF);
+    for (var i = 0; i < 10; i++) {
+      var a = Math.random() * Math.PI - Math.PI;   /* 上方向中心 */
+      var sp = 60 + Math.random() * 240;
+      debris.push({
+        x: p.x, y: p.y - p.ppm * 0.8,
+        vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 140,
+        life: 0.55 + Math.random() * 0.35,
+        size: 1.5 + Math.random() * 2.5
+      });
+    }
+    if (debris.length > 120) debris.splice(0, debris.length - 120);
   }
 
   function endRun(cleared) {
@@ -525,7 +557,10 @@
 
       /* 人数が減るほどカメラが寄る。最後の二人はかなり大きい */
       var n = Math.max(2, W.aliveCount());
-      var zTarget = U.clamp(1 + (12 - n) * 0.09, 1, 1.95);
+      var zTarget;
+      if (n >= 4) zTarget = 1 + (12 - n) * 0.09;
+      else if (n === 3) zTarget = 2.3;
+      else zTarget = 3.6;                       /* 最後の二人。ほぼ全身アップ */
       zoomCur += (zTarget - zoomCur) * Math.min(1, dt * 1.2);
       R2.setZoom(zoomCur);
 
@@ -590,6 +625,22 @@
         if (prog > 1.4) continue;
         R2.drawLaser(L.w.x, L.w.laneF, prog, t);
       }
+    }
+
+    /* 破片。血ではなく、砕けた路面と埃 */
+    if (debris.length) {
+      for (i = debris.length - 1; i >= 0; i--) {
+        var D = debris[i];
+        D.life -= dt;
+        if (D.life <= 0) { debris.splice(i, 1); continue; }
+        D.vy += 620 * dt;
+        D.x += D.vx * dt;
+        D.y += D.vy * dt;
+        g.globalAlpha = Math.min(1, D.life * 2.2) * 0.7;
+        g.fillStyle = '#55555a';
+        g.fillRect(D.x, D.y, D.size, D.size);
+      }
+      g.globalAlpha = 1;
     }
 
     g.restore();

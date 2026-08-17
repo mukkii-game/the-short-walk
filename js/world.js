@@ -317,7 +317,11 @@
     for (var i = W.walkers.length - 1; i >= 0; i--) {
       var w = W.walkers[i];
       if (w.dead && t - w.deathT > 2.2) {
-        W.marks.push({ x: w.x, laneF: w.laneF, color: w.color || '#2a2a30' });
+        W.marks.push({
+          x: w.x, laneF: w.laneF,
+          id: w.id, isPlayer: !!w.isPlayer,
+          rot: (w.id % 2 === 0 ? 1 : -1) * Math.PI / 2
+        });
         if (W.marks.length > 100) W.marks.shift();
         W.walkers.splice(i, 1);
       }
