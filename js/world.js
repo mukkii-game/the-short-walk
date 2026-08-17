@@ -145,11 +145,11 @@
      * 「最後の二人」の勝負（かなり正確でないと勝てない）が成立しない。 */
     var elite = W.walkers[W.walkers.length - 1];
     elite.type = 'elite'; elite.tier = 11;
-    elite.sigma0 = 0.022; elite.bias = (Math.random() < 0.5 ? -1 : 1) * 0.0025;
+    elite.sigma0 = 0.030; elite.bias = (Math.random() < 0.5 ? -1 : 1) * 0.006;
     elite.patErr = 0.003; elite.dropRate = 0.001; elite.panicBase = 0.018; elite.sway = 0.15;
     var second = W.walkers[W.walkers.length - 2];
     second.type = 'steady'; second.tier = 9;
-    second.sigma0 = 0.028; second.bias = (Math.random() < 0.5 ? -1 : 1) * 0.005;
+    second.sigma0 = 0.040; second.bias = (Math.random() < 0.5 ? -1 : 1) * 0.011;
     second.patErr = 0.006; second.dropRate = 0.002; second.panicBase = 0.022; second.sway = 0.3;
 
     /* 先導者（ペースメーカー） */
@@ -470,7 +470,7 @@
       var LV = w.duelLevel;
       /* 全力(1.0)の相手は最後ほぼ戻ってくるが、途中で壊れた者(0.7)は
        * 大きく外れたまま終わりがちにする。プレイヤーより先に死ぬ壁になる */
-      var duelBias = LV < 1 ? (Math.random() < 0.5 ? -1 : 1) * (0.9 + Math.random() * 0.8) : 0;
+      var duelBias = LV < 1 ? (Math.random() < 0.5 ? -1 : 1) * (2.0 + Math.random() * 1.2) : 0;
       w.duelSegs = [];
       var stepD = W.speed * R.phraseDur / R.pattern.length;   /* 一歩の距離 */
       var out = [];
@@ -482,15 +482,15 @@
         var devNow = out.length * stepD - W.speed * (lastT - R.tGo);
         var mode = segIdx % 3 === 1 ? 'run' : (segIdx % 3 === 2 ? 'stop' : 'walk');
         /* 大きく置いていかれているときは、止まらずに走って戻る */
-        if (mode === 'stop' && devNow < -1.6 * LV) mode = 'run';
-        if (mode === 'run' && devNow > 1.6 * LV) mode = 'stop';
+        if (mode === 'stop' && devNow < duelBias - 1.6 * LV) mode = 'run';
+        if (mode === 'run' && devNow > duelBias + 1.6 * LV) mode = 'stop';
         var dur = mode === 'stop' ? 0.5 + Math.random() * 0.5
                 : mode === 'run' ? 1.0 + Math.random() * 1.0
                 : 2.0 + Math.random() * 2.0;
         if (segIdx > 0) w.duelSegs.push({ t: lastT, mode: mode });
         var rate = mode === 'run' ? 1 + (0.5 + Math.random() * 0.45) * LV
                  : mode === 'stop' ? 0
-                 : U.clamp(1 - (devNow - duelBias) * 0.5, 1 - 0.4 * LV, 1 + 0.45 * LV);
+                 : U.clamp(1 - (devNow - duelBias) * (LV < 1 ? 0.9 : 0.5), 1 - 0.4 * LV, 1 + 0.45 * LV);
         if (rate > 0.2) {
           var interval = (R.phraseDur / R.pattern.length) / rate;
           for (var tt = lastT; tt < Math.min(lastT + dur, R.tEnd); tt += interval) {
@@ -500,6 +500,27 @@
         lastT += dur;
         segIdx++;
       }
+      /* 途中で壊れた者(LV<1)は、外れた位置で終わることを保証する。
+       * 確率任せだと3回に1回は戻ってきてしまい、盾の役目を果たさない。
+       * 足りなければ末尾で帳尻を合わせる:
+       *   前のめりに外れる → 最後に駆け込みの連打
+       *   後ろに外れる     → 最後の数歩を踏まず、立ち尽くす */
+      if (LV < 1) {
+        var devFin = out.length * stepD - W.speed * (R.tEnd - R.tGo);
+        var want = duelBias;
+        var diff = want - devFin;
+        var kAdj = Math.round(diff / stepD);
+        if (kAdj > 0) {
+          for (var ka = 0; ka < Math.min(kAdj, 5); ka++) {
+            out.push({ t: R.tEnd - 1.6 + ka * 0.22 + U.gauss(0, 0.03), k: 'R' });
+          }
+        } else if (kAdj < 0) {
+          var drop = Math.min(-kAdj, 5);
+          out.sort(function (a, b) { return a.t - b.t; });
+          out.splice(out.length - drop, drop);
+        }
+      }
+
       /* 判決の間も歩き続ける。ここを欠かすと、判定は近い位置で取られたのに
        * 画面では凍って置き去りに見える、という食い違いが起きる */
       for (var ci = 0; ci < R.slotsCool.length; ci++) {
