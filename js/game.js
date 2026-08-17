@@ -40,6 +40,11 @@
   var online = null;
   var syncSince = -1;
 
+  /* 優勝エンディング（逃走）
+   * 画面が引き、追いすがる白い群れから連打で逃げる。
+   * 捕まれば End、右端まで逃げ切れば Life continues... */
+  var chase = null;   /* {t0, camFix, speed, done} */
+
   var TOTAL_ROUNDS = SW.rounds.length;
   var GRACE = 0.35;
 
@@ -54,7 +59,8 @@
     return {
       auto: q.auto != null ? parseFloat(q.auto) / 1000 : 0,
       bias: q.bias != null ? parseFloat(q.bias) / 100 : 0.008,
-      round: q.round != null ? Math.max(1, parseInt(q.round, 10)) : 1
+      round: q.round != null ? Math.max(1, parseInt(q.round, 10)) : 1,
+      god: q.god === '1'      /* 無敵。テストとラスト確認用 */
     };
   })();
   var autoPresses = [], autoIdx = 0;
@@ -193,11 +199,23 @@
   }
 
   function startRound() {
-    /* 残り2人なら、相手はもう限界だ */
-    if (W.aliveCount() === 2) {
+    /* 残り2人: 相手はもう限界。残り3人: 1人が先に壊れはじめる */
+    var aliveN = W.aliveCount();
+    if (aliveN === 2 || aliveN === 3) {
+      var cands = [];
       for (var fi = 0; fi < W.walkers.length; fi++) {
         var fw = W.walkers[fi];
-        if (fw.alive && !fw.isPlayer) fw.finalDuel = true;
+        if (fw.alive && !fw.isPlayer) cands.push(fw);
+      }
+      if (aliveN === 2) {
+        for (fi = 0; fi < cands.length; fi++) {
+          cands[fi].duelLevel = 1;
+          if (cands[fi].homeLane == null) cands[fi].homeLane = cands[fi].laneT;
+        }
+      } else if (cands.length && !cands.some(function (c) { return c.duelLevel; })) {
+        var pick = cands[Math.floor(Math.random() * cands.length)];
+        pick.duelLevel = 0.7;
+        pick.homeLane = pick.laneT;
       }
     }
     R = buildRound(roundIdx);
@@ -232,6 +250,14 @@
   }
 
   function pressAt(t) {
+    if (state === 'chase') {
+      if (chase && !chase.done) {
+        W.player.x += CHASE_STEP;
+        W.registerStep(W.player, t, 'R');
+        A.step(A.now(), 'R', 0.6);
+      }
+      return;
+    }
     if (!isLive(t)) return;
     presses.push({ t: t });
     W.registerStep(W.player, t, 'R');
@@ -365,13 +391,19 @@
     for (var i = bubbles.length - 1; i >= 0; i--) {
       if (t > bubbles[i].until || (!bubbles[i].w.alive && !bubbles[i].keepDead)) bubbles.splice(i, 1);
     }
-    /* 一騎打ちの相手: 走る・止まるの変わり目に、何かを漏らす */
+    /* 壊れかけの相手: 走る・止まるの変わり目に何かを漏らし、
+     * 走るときはプレイヤーのすぐ隣まで寄ってくる */
     for (i = 0; i < W.walkers.length; i++) {
       var dw = W.walkers[i];
-      if (dw.finalDuel && dw.alive && dw.duelSegs && dw.duelSegs.length &&
+      if (dw.duelLevel && dw.alive && dw.duelSegs && dw.duelSegs.length &&
           t >= dw.duelSegs[0].t) {
-        dw.duelSegs.shift();
+        var seg = dw.duelSegs.shift();
         bubbles.push({ w: dw, text: U.pick(SW.PANIC), until: t + 1.9 });
+        if (seg.mode === 'run' && Math.random() < 0.6) {
+          dw.laneT = W.LANE_NEAR - W.LANE_GAP * 0.5;   /* すぐ隣 */
+        } else if (seg.mode === 'walk' && dw.homeLane != null) {
+          dw.laneT = dw.homeLane;
+        }
       }
     }
     if (t < nextBubbleAt) return;
@@ -429,6 +461,9 @@
     var target = SW.TARGETS[Math.min(roundIdx, SW.TARGETS.length - 1)];
     var quota = Math.max(0, W.aliveCount() - target);
     var victims = W.markVictims(1e9, quota);
+    if (DBG.god) {
+      victims = victims.filter(function (v) { return !v.isPlayer; });
+    }
     scheduleLasers(t, victims);
   }
 
@@ -484,6 +519,63 @@
     if (debris.length > 120) debris.splice(0, debris.length - 120);
   }
 
+  /* ---- 優勝エンディング ---- */
+
+  var CHASE_STEP = 0.6;      /* 連打1回で進む距離 */
+
+  function beginChase(t) {
+    state = 'chase';
+    chase = { t0: t, camFix: camX, speed: 3.2, done: null, doneAt: 0 };
+    W.spawnChasers(6, t);
+    A.bedStop();
+    A.ambLevel(0.34, 2.0);
+    toast('ユウショウ', 2200);
+    cue('RUN');
+  }
+
+  function chaseTick(t, dt) {
+    var c = chase;
+    if (!c || c.done) return;
+    /* 追手はだんだん速くなる */
+    c.speed += 0.12 * dt;
+    W.updateChasers(t, dt, c.speed);
+
+    /* 捕まった */
+    for (var i = 0; i < W.chasers.length; i++) {
+      if (W.chasers[i].x >= W.player.x - 0.7) {
+        c.done = 'end';
+        c.doneAt = t;
+        A.thud(t);
+        flash = 0.6;
+        return;
+      }
+    }
+    /* 画面右端まで逃げ切った */
+    var sp = R2.screenOf(W.player.x, W.player.laneF);
+    if (sp.x > R2.size().w - 30) {
+      c.done = 'life';
+      c.doneAt = t;
+    }
+  }
+
+  function endChase() {
+    state = 'end';
+    A.panic();
+    A.ambLevel(0.08, 1.6);
+    hide('hud');
+    var t = A.now();
+    if (chase.done === 'life') {
+      A.fanfare(t + 0.2);
+      html('endTitle', 'Life continues...');
+      html('endLead', '');
+    } else {
+      A.dead(t + 0.15);
+      html('endTitle', 'End');
+      html('endLead', '');
+    }
+    show('panelEnd');
+  }
+
   function endRun(cleared) {
     state = 'end';
     A.panic();
@@ -508,6 +600,17 @@
     lastFrame = wall;
     if (!A.ok()) { R2.begin(0.2); R2.vignette(0.5); return; }
     var t = A.now();
+
+    if (state === 'chase') {
+      chaseTick(t, dt);
+      /* カメラは固定。画面はじょじょに引いていく */
+      zoomCur += (0.85 - zoomCur) * Math.min(1, dt * 0.5);
+      R2.setZoom(zoomCur);
+      R2.setCam(chase.camFix);
+      if (chase.done && t - chase.doneAt > 1.2) endChase();
+      draw(t, dt);
+      return;
+    }
 
     if (R && state !== 'end') {
       if (state === 'demo' && t >= R.tCount) {
@@ -592,7 +695,7 @@
       zoomCur += (zTarget - zoomCur) * Math.min(1, dt * 1.2);
       R2.setZoom(zoomCur);
 
-      camX += (W.player.x - camX) * Math.min(1, dt * 3.5);
+      camX += (W.player.x - camX) * Math.min(1, dt * 9);
       R2.setCam(camX);
     }
 
@@ -629,11 +732,15 @@
     /* 描画順は毎フレーム laneF で並べ直す。奥から描き、画面の下にいる者ほど手前。
      * 列の詰め直しの最中に配列順と実際の前後関係がズレて重なりが崩れるため */
     var list = W.walkers.slice(), i, w;
-    if (W.pacer && pacerAlpha > 0.02) list.push(W.pacer);
+    if (state === 'chase') list = list.concat(W.chasers);
+    else if (W.pacer && pacerAlpha > 0.02) list.push(W.pacer);
     list.sort(function (a, b) { return a.laneF - b.laneF; });
     for (i = 0; i < list.length; i++) {
       w = list[i];
-      R2.drawWalker(w, t, w === W.pacer ? pacerOpts : {});
+      var wOpts = {};
+      if (w === W.pacer) wOpts = pacerOpts;
+      else if (w.isPacer) wOpts = { color: R2.pal.pacer, glow: true, scale: 1.18 };  /* 追手 */
+      R2.drawWalker(w, t, wOpts);
     }
 
     /* 吹き出し */

@@ -234,6 +234,34 @@
     return null;
   };
 
+  /* ---- 優勝エンディングの追走 ----
+   * ペースメーカーの群れが後方から迫ってくる。ゲーム本編の隊列とは別物 */
+  W.chasers = [];
+
+  W.spawnChasers = function (n, t) {
+    W.chasers = [];
+    for (var i = 0; i < n; i++) {
+      var c = makeWalker(900 + i, false);
+      c.isPacer = true;
+      c.x = W.player.x - 10 - i * 1.8 - Math.random() * 1.5;
+      c.laneF = c.laneT = U.clamp(W.player.laneF - 0.05 - i * 0.045, W.LANE_FAR, W.LANE_NEAR);
+      c.lastStepT = t; c.pace = 0.5;
+      W.chasers.push(c);
+    }
+  };
+
+  W.updateChasers = function (t, dt, speed) {
+    for (var i = 0; i < W.chasers.length; i++) {
+      var c = W.chasers[i];
+      c.x += speed * dt;
+      /* 歩幅ぶん進むたびに脚を踏み替える */
+      if (t - c.lastStepT > 0.9 / Math.max(1, speed)) {
+        W.registerStep(c, t, 'R');
+        c.pace = 0.9 / Math.max(1, speed);
+      }
+    }
+  };
+
   W.aliveCount = function () {
     var c = 0;
     for (var i = 0; i < W.walkers.length; i++) if (W.walkers[i].alive) c++;
@@ -423,7 +451,8 @@
     /* 最後の一騎打ちの相手は、もう限界が来ている。
      * 突然走り出し、立ち止まり、また歩き出す。そのたびに何かを漏らす。
      * 走る・止まるの予定表(duelSegs)を作っておき、吹き出しはそこに同期する */
-    if (w.finalDuel) {
+    if (w.duelLevel) {
+      var LV = w.duelLevel;
       w.duelSegs = [];
       var stepD = W.speed * R.phraseDur / R.pattern.length;   /* 一歩の距離 */
       var out = [];
@@ -435,15 +464,15 @@
         var devNow = out.length * stepD - W.speed * (lastT - R.tGo);
         var mode = segIdx % 3 === 1 ? 'run' : (segIdx % 3 === 2 ? 'stop' : 'walk');
         /* 大きく置いていかれているときは、止まらずに走って戻る */
-        if (mode === 'stop' && devNow < -1.2) mode = 'run';
-        if (mode === 'run' && devNow > 1.2) mode = 'stop';
+        if (mode === 'stop' && devNow < -1.6 * LV) mode = 'run';
+        if (mode === 'run' && devNow > 1.6 * LV) mode = 'stop';
         var dur = mode === 'stop' ? 0.5 + Math.random() * 0.5
                 : mode === 'run' ? 1.0 + Math.random() * 1.0
                 : 2.0 + Math.random() * 2.0;
         if (segIdx > 0) w.duelSegs.push({ t: lastT, mode: mode });
-        var rate = mode === 'run' ? 1.35 + Math.random() * 0.2
+        var rate = mode === 'run' ? 1 + (0.5 + Math.random() * 0.45) * LV
                  : mode === 'stop' ? 0
-                 : U.clamp(1 - devNow * 0.5, 0.65, 1.4);
+                 : U.clamp(1 - devNow * 0.5, 1 - 0.4 * LV, 1 + 0.45 * LV);
         if (rate > 0.2) {
           var interval = (R.phraseDur / R.pattern.length) / rate;
           for (var tt = lastT; tt < Math.min(lastT + dur, R.tEnd); tt += interval) {

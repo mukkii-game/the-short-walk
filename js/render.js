@@ -346,6 +346,9 @@
         rot = Math.PI / 2 * (w.id % 2 === 0 ? 1 : -1);
         lieMix = U.clamp((ddt - 0.8) / 1.2, 0, 1);   /* 徐々に灰色のシミへ */
         alpha *= 1 - lieMix * 0.35;
+        /* 横たわった体は地面まで沈める。回転軸のままだと半身ぶん浮く */
+        var settle = U.clamp((ddt - 0.5) / 0.25, 0, 1);
+        fy += (SPR.FOOT * scale * 0.5 - h * 0.10) * settle;
       }
     }
 
@@ -687,7 +690,7 @@
         var row = m.isPlayer ? 1 : 2 + ((m.id * 7919 + 13) % (SPR.rows - 2));
         var scale = h / SPR.BODY_H;
         var size = SPR.CELL * scale;
-        var cy2 = p.y - SPR.FOOT * scale * 0.5;
+        var cy2 = p.y - h * 0.07;   /* 地面に貼りつく高さ */
         g.save();
         g.imageSmoothingEnabled = false;
         g.globalAlpha = 0.30;
