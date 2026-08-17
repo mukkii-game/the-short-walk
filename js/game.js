@@ -34,6 +34,11 @@
   var bubbles = [];          /* {w, text, until} */
   var nextBubbleAt = 0;
 
+  /* オンライン。null ならソロ。
+   * {humans, npcPlan, verdictQueue:[], ended:false} */
+  var online = null;
+  var syncSince = -1;
+
   var TOTAL_ROUNDS = SW.rounds.length;
   var GRACE = 0.35;
 
@@ -111,7 +116,7 @@
     fill(r.slotsDemo, 0, cfg.demo);
     fill(r.slotsCount, cfg.demo, 1);
     fill(r.slotsBlack, cfg.demo + 1, cfg.black);
-    fill(r.slotsCool, cfg.demo + 1 + cfg.black, 3);
+    fill(r.slotsCool, cfg.demo + 1 + cfg.black, 12);   /* 判決待ちの間も歩き続ける */
 
     /* 号令。頭に入れたリズムそのもので数える。
      * お題の打鍵が5つなら 5,4,3,2,1 ── 号令フレーズの各打鍵に1つずつ。
@@ -157,15 +162,34 @@
     A.windStart();
     A.ambLevel(0.16, 0.8);
     A.musicLevel(0.55, 0.2);
+    online = null;
     roundIdx = Math.min(DBG.round, TOTAL_ROUNDS) - 1;
     W.create(SW.START_COUNT, A.now());
     camX = 0;
     R2.setCam(0);
     playerDeadAt = -1;
-    hide('panelTitle'); hide('panelCalib'); hide('panelEnd');
+    hide('panelTitle'); hide('panelCalib'); hide('panelEnd'); hide('panelLobby');
     show('hud');
     startRound();
   };
+
+  /* サーバの start を受けて開始。隊列は 自分+他の人間+計画表つきNPC */
+  function startRunOnline(msg) {
+    A.init();
+    A.panic();
+    A.windStart();
+    A.ambLevel(0.16, 0.8);
+    A.musicLevel(0.55, 0.2);
+    online = { humans: msg.players, npcPlan: msg.npcPlan, verdictQueue: [], ended: false };
+    roundIdx = 0;
+    W.createOnline(SW.net.playerId, msg.players, msg.npcPlan, A.now());
+    camX = 0;
+    R2.setCam(0);
+    playerDeadAt = -1;
+    hide('panelTitle'); hide('panelCalib'); hide('panelEnd'); hide('panelLobby');
+    show('hud');
+    startRound();
+  }
 
   function startRound() {
     R = buildRound(roundIdx);
@@ -298,6 +322,8 @@
   }
 
   G.toTitle = function () {
+    SW.net.close();
+    online = null;
     A.panic();
     A.musicLevel(0.0, 0.3);
     A.ambLevel(0.10, 0.6);
@@ -326,7 +352,7 @@
     var pool = [];
     for (i = 0; i < W.walkers.length; i++) {
       var w = W.walkers[i];
-      if (w.alive && !w.isPlayer) pool.push(w);
+      if (w.alive && !w.isPlayer && !w.isRemote) pool.push(w);
     }
     if (!pool.length) return;
     var n = W.aliveCount();
@@ -348,6 +374,21 @@
   var LASER_FALL = 0.30;     /* 降下時間 */
   var LASER_GAP = 0.14;      /* 1本ごとの間隔 */
 
+  /* サーバが決めた処刑リストで判決を演出する */
+  function beginServerVerdict(t, V) {
+    lasers = [];
+    window.__syncToast = 0;
+    var victims = [];
+    for (var i = 0; i < V.eliminated.length; i++) {
+      var w = W.byNetId(V.eliminated[i]) ||
+        (V.eliminated[i] === SW.net.playerId ? W.player : null);
+      if (w) victims.push(w);
+    }
+    victims.sort(function (a, b) { return a.laneF - b.laneF; });
+    scheduleLasers(t, victims);
+    if (V.gameend) online.ended = true;
+  }
+
   function beginVerdict(t) {
     lasers = [];
     verdictDone = -1;
@@ -355,6 +396,11 @@
     var target = SW.TARGETS[Math.min(roundIdx, SW.TARGETS.length - 1)];
     var quota = Math.max(0, W.aliveCount() - target);
     var victims = W.markVictims(1e9, quota);
+    scheduleLasers(t, victims);
+  }
+
+  function scheduleLasers(t, victims) {
+    lasers = [];
     for (var i = 0; i < victims.length; i++) {
       lasers.push({ w: victims[i], at: t + 1.1 + i * LASER_GAP, hit: false });
     }
@@ -412,9 +458,17 @@
         setTimeout(function () { A.bedStop(); }, 700);
         A.ambLevel(0.30, 1.2);
       } else if (state === 'black' && t >= R.tEnd) {
-        state = 'verdict';
-        roundEndAt = t;
-        beginVerdict(t);
+        if (online) {
+          state = 'sync';
+          roundEndAt = t;
+          syncSince = t;
+          /* 自分のズレを1つ送るだけ。あとは歩いて待つ */
+          SW.net.sendResult(roundIdx, W.player.devHold);
+        } else {
+          state = 'verdict';
+          roundEndAt = t;
+          beginVerdict(t);
+        }
       }
 
       /* 号令 */
@@ -432,6 +486,20 @@
 
       W.update(R, t, dt);
       W.pruneDead(t);
+
+      /* 同期待ち: サーバの判決が来るまで歩き続ける */
+      if (state === 'sync') {
+        if (online && online.verdictQueue.length) {
+          var V = online.verdictQueue.shift();
+          W.applyDevs(V.devs);
+          state = 'verdict';
+          roundEndAt = t;
+          beginServerVerdict(t, V);
+        } else if (t - syncSince > 4 && !window.__syncToast) {
+          window.__syncToast = 1;
+          toast('ホカ ノ ホコウシャ ヲ マツ', 2200);
+        }
+      }
 
       /* 判決: レーザーが順に落ちる */
       if (state === 'verdict') {
@@ -498,7 +566,7 @@
     /* 描画順は毎フレーム laneF で並べ直す。奥から描き、画面の下にいる者ほど手前。
      * 列の詰め直しの最中に配列順と実際の前後関係がズレて重なりが崩れるため */
     var list = W.walkers.slice(), i, w;
-    if (pacerAlpha > 0.02) list.push(W.pacer);
+    if (W.pacer && pacerAlpha > 0.02) list.push(W.pacer);
     list.sort(function (a, b) { return a.laneF - b.laneF; });
     for (i = 0; i < list.length; i++) {
       w = list[i];
@@ -537,9 +605,77 @@
 
   /* ---- 起動 ---- */
 
+  /* ---- ロビー ---- */
+
+  function lobbyMsg(sub) {
+    html('lobbyStatus', sub || '');
+  }
+
+  function renderLobby(m) {
+    var isHost = m.hostId === SW.net.playerId;
+    var rows = '';
+    for (var i = 0; i < m.players.length; i++) {
+      var p = m.players[i];
+      rows += '<li>' + p.name +
+        (p.id === SW.net.playerId ? '　←アナタ' : '') +
+        (p.id === m.hostId ? '　（シキ）' : '') + '</li>';
+    }
+    html('lobbyList', rows);
+    $('btnGo').classList.toggle('hidden', !isHost);
+    lobbyMsg(isHost
+      ? (m.players.length < 2 ? 'ヒトリデモ ハジメラレル。ノコリハ ホコウシャ デ ウマル' : 'ソロッタラ ハジメロ')
+      : 'シキ ノ ゴウレイ ヲ マツ');
+  }
+
+  G.openLobby = function () {
+    var name = U.storage.get('sw_name', '');
+    $('nameIn').value = name;
+    hide('panelTitle');
+    show('panelLobby');
+    hide('lobbyRoom'); show('lobbyJoin');
+    lobbyMsg('');
+  };
+
+  function joinMatch() {
+    var name = ($('nameIn').value || 'ナナシ').slice(0, 8);
+    U.storage.set('sw_name', name);
+    lobbyMsg('セツゾク チュウ…');
+    SW.net.quickMatch(name);
+  }
+
+  function leaveLobby() {
+    SW.net.close();
+    hide('panelLobby');
+    show('panelTitle');
+  }
+
+  function bindNet() {
+    var N = SW.net;
+    N.on('joined', function () {
+      hide('lobbyJoin'); show('lobbyRoom');
+    });
+    N.on('lobby', function (m) { renderLobby(m); });
+    N.on('start', function (m) { startRunOnline(m); });
+    N.on('verdict', function (m) {
+      if (online) online.verdictQueue.push(m);
+    });
+    N.on('gameend', function () {
+      if (online) online.ended = true;
+    });
+    N.on('error', function (msg) { lobbyMsg(String(msg)); });
+    N.on('closed', function () {
+      if (online && state !== 'end' && state !== 'title') {
+        /* 回線が切れたら以降はローカル判定で続行 */
+        toast('ツウシン ガ キレタ', 2400);
+        online = null;
+      }
+    });
+  }
+
   G.boot = function () {
     R2.init($('stage'));
     calOffset = U.storage.get('sw_cal', 0) || 0;
+    bindNet();
 
     document.addEventListener('keydown', onKeyDown);
     $('stage').addEventListener('pointerdown', onPointer);
@@ -553,6 +689,10 @@
     }
     btn('btnStart', function () { G.startRun(); });
     btn('btnAgain', function () { G.startRun(); });
+    btn('btnMulti', function () { G.openLobby(); });
+    btn('btnJoin', function () { joinMatch(); });
+    btn('btnGo', function () { SW.net.start(); });
+    btn('btnLeave', function () { leaveLobby(); });
     var bc = $('btnCal2');
     if (bc) bc.addEventListener('click', function (e) {
       e.stopPropagation();

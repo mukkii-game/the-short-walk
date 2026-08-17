@@ -349,6 +349,17 @@
       g.fill();
     }
 
+    /* 名札（オンラインの他プレイヤー） */
+    if (w.name) {
+      var nfs = U.clamp(h * 0.14, 10, 18);
+      g.font = nfs + 'px "Yu Mincho", serif';
+      g.textAlign = 'center'; g.textBaseline = 'bottom';
+      g.fillStyle = 'rgba(0,0,0,0.55)';
+      g.fillText(w.name, p.x + 1, fy + 1 - h * 1.02);
+      g.fillStyle = 'rgba(232,228,214,0.92)';
+      g.fillText(w.name, p.x, fy - h * 1.02);
+    }
+
     /* 先導者の旗 */
     if (opts.flag) {
       var poleX = p.x + size * 0.16;

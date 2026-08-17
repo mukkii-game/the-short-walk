@@ -150,6 +150,17 @@ SW.audio.loaded()   // ブラウザのコンソールで実行
 
 ---
 
+## マルチプレイ
+
+「ミンナデ」からオンライン対戦（最大12人、1人でも可・空きはNPCが埋める）。
+方式はラウンド単位のロックステップで、**ラウンド中は通信ゼロ**。
+終わったら各自の最終ズレを1つ提出し、サーバが順位を切って全員に判決を配る。
+リズム判定は各端末のローカル時計基準なので、回線や端末差でプレイ感覚は狂わない。
+
+- ローカル検証: `cd server && npm install && node node-server.js`
+- 本番: Cloudflare Workers に `npx wrangler deploy`（手順は [server/README.md](server/README.md)）。
+  出てきたURLを `js/net.js` の `SERVER` に書くこと。**書くまで公開サイトの「ミンナデ」は動かない**
+
 ## v0.1 で入っていないもの
 
 - オンラインランキング（現在は端末内 localStorage のみ）

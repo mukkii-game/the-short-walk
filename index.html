@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>Short Walk</title>
-<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/style.css?v=20260817c">
 </head>
 <body>
 
@@ -31,6 +31,7 @@
     <p class="lead dim2">歩くのはどのボタンでもいい</p>
     <div class="btns">
       <button id="btnStart" class="primary">START</button>
+      <button id="btnMulti">ミンナデ</button>
       <button id="btnVis" class="sub"></button>
       <button id="btnCal2" class="sub small">チョウセイ</button>
     </div>
@@ -38,6 +39,29 @@
   <div class="credits">
     sprites: <a href="https://lpc.opengameart.org/" target="_blank" rel="noopener">Liberated Pixel Cup</a> (CC-BY-SA 3.0)
     ／ sfx: <a href="https://soundeffect-lab.info/" target="_blank" rel="noopener">効果音ラボ</a>
+  </div>
+</div>
+
+<!-- ロビー -->
+<div id="panelLobby" class="panel hidden">
+  <div class="sheet narrow center">
+    <h2>ミンナデ アルク</h2>
+    <div id="lobbyJoin">
+      <p class="lead">ナマエ ヲ イレロ（8モジ マデ）</p>
+      <p><input id="nameIn" maxlength="8" class="namein"></p>
+      <div class="btns center">
+        <button id="btnJoin" class="primary">サンカ</button>
+        <button id="btnLeave">モドル</button>
+      </div>
+    </div>
+    <div id="lobbyRoom" class="hidden">
+      <ul id="lobbyList" class="lobbylist"></ul>
+      <div class="btns center">
+        <button id="btnGo" class="primary hidden">ハジメル</button>
+        <button id="btnLeave2" class="hidden"></button>
+      </div>
+    </div>
+    <p id="lobbyStatus" class="dim2 lead"></p>
   </div>
 </div>
 
@@ -61,11 +85,12 @@
   </div>
 </div>
 
-<script src="js/util.js"></script>
-<script src="js/audio.js"></script>
-<script src="js/patterns.js"></script>
-<script src="js/world.js"></script>
-<script src="js/render.js"></script>
-<script src="js/game.js"></script>
+<script src="js/util.js?v=20260817c"></script>
+<script src="js/net.js?v=20260817c"></script>
+<script src="js/audio.js?v=20260817c"></script>
+<script src="js/patterns.js?v=20260817c"></script>
+<script src="js/world.js?v=20260817c"></script>
+<script src="js/render.js?v=20260817c"></script>
+<script src="js/game.js?v=20260817c"></script>
 </body>
 </html>

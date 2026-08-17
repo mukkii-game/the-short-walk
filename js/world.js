@@ -167,6 +167,73 @@
     return W;
   };
 
+  /* オンライン用。自分＋他の人間＋計画表つきNPCで隊列を作る。
+   * humans: [{id,name}]（自分含む・サーバの順）
+   * npcPlan: [{id, devs:[r1..r5]}] 各ラウンドの最終ズレ。
+   * NPCはこの値に「到着するように」歩く。見た目と判定が食い違わない。 */
+  W.createOnline = function (selfId, humans, npcPlan, t0) {
+    W.T0 = t0 || 0;
+    W._regBase = 0; W._tv = W.T0; W.speed = SPEED;
+    W.walkers = [];
+    W.marks = [];
+
+    var i, w;
+    for (i = 0; i < humans.length; i++) {
+      var isSelf = humans[i].id === selfId;
+      w = makeWalker(i + 1, isSelf);
+      w.netId = humans[i].id;
+      if (!isSelf) {
+        w.type = 'remote';
+        w.isRemote = true;
+        w.name = humans[i].name;
+        /* 他人はラウンド中は規定どおりに歩いて見える（結果は判決で反映） */
+        w.sigma0 = 0.03; w.bias = 0; w.patErr = 0; w.dropRate = 0;
+        w.panicBase = 0.02; w.sway = 0; w.planDevs = null;
+        /* 人間は明るめの服で塗り分け（群衆より浮かせる） */
+        w.color = 'hsl(' + ((i * 47) % 360) + ',30%,42%)';
+      }
+      if (isSelf) W.player = w;
+      W.walkers.push(w);
+    }
+    for (i = 0; i < npcPlan.length; i++) {
+      w = makeWalker(100 + i, false);
+      w.netId = npcPlan[i].id;
+      w.planDevs = npcPlan[i].devs;
+      w.sway = 0;
+      W.walkers.push(w);
+    }
+
+    var pc = makeWalker(0, false);
+    pc.isPacer = true;
+    pc.color = '#eef4ff';
+    W.pacer = pc;
+
+    for (i = 0; i < W.walkers.length; i++) {
+      W.walkers[i].baseX = 0; W.walkers[i].baseT = 0; W.walkers[i].x = 0;
+    }
+    pc.baseX = 0; pc.baseT = 0; pc.x = 0;
+    W.formLine(true);
+    W.sort();
+    return W;
+  };
+
+  /* 判決で確定した各自のズレを反映。位置は update() の追従で滑らかに動く */
+  W.applyDevs = function (map) {
+    for (var i = 0; i < W.walkers.length; i++) {
+      var w = W.walkers[i];
+      if (w.netId != null && map[w.netId] != null && !w.isPlayer) {
+        w.devHold = map[w.netId];
+      }
+    }
+  };
+
+  W.byNetId = function (id) {
+    for (var i = 0; i < W.walkers.length; i++) {
+      if (W.walkers[i].netId === id) return W.walkers[i];
+    }
+    return null;
+  };
+
   W.aliveCount = function () {
     var c = 0;
     for (var i = 0; i < W.walkers.length; i++) if (W.walkers[i].alive) c++;
@@ -342,6 +409,12 @@
     var wanderSigma = w.sigma0 * 0.085;
     /* 流されやすさは個性による。腕のいい者ほど流れに乗らない */
     var tempo = 1 + w.bias + (R.crowdBias || 0) * (w.sway == null ? 1 : w.sway);
+    /* 計画表があるNPC（オンライン）は、ラウンド末にその値へ到着するテンポで歩く */
+    if (w.planDevs && w.planDevs[R.idx] != null) {
+      var span2 = Math.max(1, W.speed * (R.tEnd - R.tGo));
+      tempo = 1 + w.planDevs[R.idx] / span2;
+      wanderSigma *= 0.4;
+    }
     var wander = 0;
     var phase = R.tGo;
     var endT = R.tEnd + R.phraseDur * 5;
