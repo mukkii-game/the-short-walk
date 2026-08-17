@@ -641,15 +641,16 @@
 
   /* NPCの吹き出し。💬のように頭から横へずらし、とんがり口で本人を指す。
    * カメラが寄るほど文字も大きくなる */
-  R2.drawBubble = function (w, text, alpha) {
+  R2.drawBubble = function (w, text, alpha, ox, oy) {
     var p = screenOf(w.x, w.laneF);
     if (p.x < -120 || p.x > Wd + 120) return;
     var h = CFG.bodyH * p.ppm;
-    var fs = U.clamp(h * 0.19, 11, 52);
-    /* 出す側は本人ごとに固定（毎フレーム揺れないように） */
+    var fs = U.clamp(h * 0.23, 13, 60);
+    /* 出す側は本人ごとに固定（毎フレーム揺れないように）。
+     * さらに吹き出しごとの乱れ(ox, oy)で重なりを散らす */
     var side = (w.id % 2 === 0) ? 1 : -1;
     var headX = p.x, headY = p.y - h * 0.98;
-    var cx = p.x + side * h * 0.62;
+    var cx = p.x + side * h * 0.62 + (ox || 0) * h * 0.55;
 
     g.save();
     g.globalAlpha = alpha;
@@ -659,13 +660,13 @@
     var bw = tw + pad * 2;
     var bh = fs + pad * 1.1;
     var bx = cx - bw / 2 + side * bw * 0.18;
-    var by = headY - bh - fs * 0.55;
+    var by = headY - bh - fs * 0.55 - (oy || 0) * h * 0.34;
 
     g.fillStyle = 'rgba(10,11,15,0.80)';
     g.strokeStyle = 'rgba(210,204,188,0.45)';
     g.lineWidth = 1;
     g.beginPath();
-    if (g.roundRect) g.roundRect(bx, by, bw, bh, 5); else g.rect(bx, by, bw, bh);
+    if (g.roundRect) g.roundRect(bx, by, bw, bh, Math.min(bh * 0.5, fs * 0.9)); else g.rect(bx, by, bw, bh);
     g.fill(); g.stroke();
 
     /* とんがり口。吹き出しの根元から本人の頭へ */

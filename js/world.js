@@ -457,6 +457,9 @@
      * 走る・止まるの予定表(duelSegs)を作っておき、吹き出しはそこに同期する */
     if (w.duelLevel) {
       var LV = w.duelLevel;
+      /* 全力(1.0)の相手は最後ほぼ戻ってくるが、途中で壊れた者(0.7)は
+       * 大きく外れたまま終わりがちにする。プレイヤーより先に死ぬ壁になる */
+      var duelBias = LV < 1 ? (Math.random() < 0.5 ? -1 : 1) * (0.9 + Math.random() * 0.8) : 0;
       w.duelSegs = [];
       var stepD = W.speed * R.phraseDur / R.pattern.length;   /* 一歩の距離 */
       var out = [];
@@ -476,7 +479,7 @@
         if (segIdx > 0) w.duelSegs.push({ t: lastT, mode: mode });
         var rate = mode === 'run' ? 1 + (0.5 + Math.random() * 0.45) * LV
                  : mode === 'stop' ? 0
-                 : U.clamp(1 - devNow * 0.5, 1 - 0.4 * LV, 1 + 0.45 * LV);
+                 : U.clamp(1 - (devNow - duelBias) * 0.5, 1 - 0.4 * LV, 1 + 0.45 * LV);
         if (rate > 0.2) {
           var interval = (R.phraseDur / R.pattern.length) / rate;
           for (var tt = lastT; tt < Math.min(lastT + dur, R.tEnd); tt += interval) {

@@ -231,6 +231,7 @@ kbd {
   text-shadow: 0 4px 40px rgba(0, 0, 0, 0.95);
 }
 #cue.on { animation: cuepop 0.5s ease-out; }
+#cue.on.long { animation: cuepop 1.15s ease-out; }
 @keyframes cuepop {
   0% { opacity: 0.95; transform: translate(-50%, -50%) scale(1.0); }
   70% { opacity: 0.85; transform: translate(-50%, -50%) scale(1.06); }

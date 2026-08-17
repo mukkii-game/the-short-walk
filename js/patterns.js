@@ -41,7 +41,7 @@
       pattern: [0, 0.5, 1, 1.5, 2.5, 3, 3.5]
     },
     { /* 4 */
-      bpm: 106, groups: [4], demo: 3, echo: 2, black: 8,
+      bpm: 106, groups: [4], demo: 3, echo: 2, black: 6,
       name: 'ずらす',
       note: '食う。拍の頭がほとんど無い',
       pattern: [0, 0.5, 1.5, 2.5, 3]
