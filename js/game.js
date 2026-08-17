@@ -542,11 +542,11 @@
   function beginChase(t) {
     state = 'chase';
     chase = { t0: t, camFix: camX, speed: 3.2, done: null, doneAt: 0 };
-    W.spawnChasers(6, t);
+    W.spawnChasers(14, t);
     A.bedStop();
     A.ambLevel(0.34, 2.0);
-    toast('ユウショウ', 2200);
-    cue('RUN');
+    cue('ユウショウ', true);
+    setTimeout(function () { toast('ニゲロ', 1800); }, 1600);
   }
 
   function chaseTick(t, dt) {
@@ -556,9 +556,11 @@
     c.speed += 0.12 * dt;
     W.updateChasers(t, dt, c.speed);
 
-    /* 捕まった */
+    /* 捕まった: 距離もレーンも詰められたら */
     for (var i = 0; i < W.chasers.length; i++) {
-      if (W.chasers[i].x >= W.player.x - 0.7) {
+      var ch = W.chasers[i];
+      if (Math.abs(ch.x - W.player.x) < 0.8 &&
+          Math.abs(ch.laneF - W.player.laneF) < 0.07) {
         c.done = 'end';
         c.doneAt = t;
         A.thud(t);
@@ -649,12 +651,10 @@
         }
       }
 
-      /* 号令 */
-      if (state === 'count' || state === 'demo') {
-        while (cueIdx < R.cues.length && t >= R.cues[cueIdx].t) {
-          cue(R.cues[cueIdx].s, R.cues[cueIdx].long);
-          cueIdx++;
-        }
+      /* 号令。GO! は断絶への遷移と同フレームになるため、状態で縛らない */
+      while (cueIdx < R.cues.length && t >= R.cues[cueIdx].t) {
+        cue(R.cues[cueIdx].s, R.cues[cueIdx].long);
+        cueIdx++;
       }
 
       while (autoIdx < autoPresses.length && autoPresses[autoIdx].t <= t) {
@@ -690,10 +690,8 @@
         if (playerDeadAt > 0 && t - playerDeadAt > 1.6) {
           endRun(false);
         } else if (playerDeadAt < 0 && !verdictPending && verdictDone > 0 && t >= verdictDone) {
-          if (W.aliveCount() <= 1) {
-            endRun(true);
-          } else if (roundIdx >= TOTAL_ROUNDS - 1) {
-            endRun(true);
+          if (W.aliveCount() <= 1 || roundIdx >= TOTAL_ROUNDS - 1) {
+            beginChase(t);
           } else {
             toast('ノコリ ' + W.aliveCount() + ' メイ', 1800);
             roundIdx++;

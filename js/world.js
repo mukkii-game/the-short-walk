@@ -243,21 +243,32 @@
     for (var i = 0; i < n; i++) {
       var c = makeWalker(900 + i, false);
       c.isPacer = true;
-      c.x = W.player.x - 10 - i * 1.8 - Math.random() * 1.5;
-      c.laneF = c.laneT = U.clamp(W.player.laneF - 0.05 - i * 0.045, W.LANE_FAR, W.LANE_NEAR);
-      c.lastStepT = t; c.pace = 0.5;
+      /* 画面奥の道の端から、ばらばらと湧いて駆け寄ってくる */
+      c.x = W.player.x - 6 + Math.random() * 14;
+      c.laneF = c.laneT = W.LANE_FAR - 0.12 - Math.random() * 0.10;
+      c.lastStepT = t; c.pace = 0.4;
+      c.chaseDelay = Math.random() * 1.6;      /* 湧き出しの時間差 */
       W.chasers.push(c);
     }
   };
 
   W.updateChasers = function (t, dt, speed) {
+    var px = W.player.x, pl = W.player.laneF;
     for (var i = 0; i < W.chasers.length; i++) {
       var c = W.chasers[i];
-      c.x += speed * dt;
-      /* 歩幅ぶん進むたびに脚を踏み替える */
-      if (t - c.lastStepT > 0.9 / Math.max(1, speed)) {
+      if (c.chaseDelay > 0) { c.chaseDelay -= dt; continue; }
+      /* プレイヤーへまっすぐ詰める。奥から手前へ、レーンも距離も */
+      var dx = px - c.x;
+      var step = speed * dt;
+      c.x += Math.abs(dx) <= step ? dx : (dx > 0 ? step : -step);
+      var dl = pl - c.laneF;
+      var lstep = 0.16 * dt * (0.7 + speed * 0.12);
+      c.laneF += Math.abs(dl) <= lstep ? dl : (dl > 0 ? lstep : -lstep);
+      c.laneT = c.laneF;
+      /* 駆け足の脚 */
+      if (t - c.lastStepT > 0.75 / Math.max(1, speed)) {
         W.registerStep(c, t, 'R');
-        c.pace = 0.9 / Math.max(1, speed);
+        c.pace = 0.75 / Math.max(1, speed);
       }
     }
   };
