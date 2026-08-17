@@ -265,7 +265,16 @@
       c.x = px + Math.cos(ang) * spawnR;
       c.laneF = c.laneT = U.clamp(pl + Math.sin(ang) * laneHalf * (spawnR / 11),
         W.LANE_FAR - 0.22, W.LANE_NEAR + 0.12);
-      c.front = Math.cos(ang) > 0.05;          /* 前方勢はゆっくり来る */
+      c.front = Math.cos(ang) > 0.05;          /* 前方勢は立って待つ */
+      if (c.front) {
+        /* 進路の帯に湧いてしまったら、湧いた瞬間に横へ置き直す。
+         * 走ってくるプレイヤーの前でYに動かれると気味が悪いので、以後は動かない */
+        var dpl0 = c.laneF - pl;
+        if (Math.abs(dpl0) < 0.16) {
+          var aw = (dpl0 >= 0 ? 1 : -1) * (0.16 + Math.random() * 0.10);
+          c.laneF = c.laneT = U.clamp(pl + aw, W.LANE_FAR - 0.22, W.LANE_NEAR + 0.12);
+        }
+      }
       c.lastStepT = t; c.pace = 0.7;
       c.chaseDelay = Math.random() * 1.6;
       c.jitterSeed = Math.random() * 100;
@@ -299,22 +308,17 @@
       var gx = px + Math.cos(c.offA) * c.offR;
       var gl = U.clamp(pl + Math.sin(c.offA) * laneHalf * (c.offR / 11) * 2.2,
         W.LANE_FAR - 0.22, W.LANE_NEAR + 0.12);
-      var v = speed * (c.front && mode !== 'crush' ? 0.5 : 1);
-      var dx = gx - c.x;
-      var step = v * dt;
-      c.x += Math.abs(dx) <= step ? dx : (dx > 0 ? step : -step);
-      var dl = gl - c.laneF;
-      var lstep = (mode === 'crush' ? 0.30 : 0.10) * dt;
       if (mode !== 'crush' && c.front) {
-        /* プレイヤーより前にいる間はレーンを詰めない。
-         * 進路上に居座られると走者は当たるしかなくなるため、
-         * むしろ近い場合は道を空けるように横へ退く */
-        var dpl = c.laneF - pl;
-        if (Math.abs(dpl) < 0.14) {
-          var away = dpl >= 0 ? 1 : -1;
-          c.laneF = U.clamp(c.laneF + away * 0.12 * dt, W.LANE_FAR - 0.22, W.LANE_NEAR + 0.12);
-        }
+        /* 前方勢は道の先に立ち尽くし、走者が来るのを待っている。
+         * 追い抜かれたら、そこからは普通の追跡者になって群れに加わる */
+        if (c.x < px - 0.8) c.front = false;
       } else {
+        var v = speed;
+        var dx = gx - c.x;
+        var step = v * dt;
+        c.x += Math.abs(dx) <= step ? dx : (dx > 0 ? step : -step);
+        var dl = gl - c.laneF;
+        var lstep = (mode === 'crush' ? 0.30 : 0.10) * dt;
         c.laneF += Math.abs(dl) <= lstep ? dl : (dl > 0 ? lstep : -lstep);
       }
       /* 不気味な小刻みの震え */
