@@ -35,10 +35,10 @@
       pattern: [0, 1, 1.5, 2, 3]
     },
     { /* 3 */
-      bpm: 104, groups: [7], demo: 3, echo: 2, black: 5,
-      name: '七つ',
-      note: '七拍。しかも途中で駆ける',
-      pattern: [0, 1, 2, 2.5, 3, 4, 5, 6]
+      bpm: 118, groups: [4], demo: 3, echo: 2, black: 6,
+      name: '駆り立てる',
+      note: '速い。十六ビートのつもりで刻め',
+      pattern: [0, 0.5, 1, 1.5, 2.5, 3, 3.5]
     },
     { /* 4 */
       bpm: 106, groups: [4], demo: 3, echo: 2, black: 8,
@@ -47,10 +47,10 @@
       pattern: [0, 0.5, 1.5, 2.5, 3]
     },
     { /* 5 */
-      bpm: 108, groups: [7, 4], demo: 3, echo: 2, black: 5,
+      bpm: 110, groups: [8], demo: 3, echo: 2, black: 5,
       name: '最後の二人',
-      note: '七拍から四拍へ。総合試験',
-      pattern: [0, 1, 1.5, 2, 3.5, 5, 7, 8.5]
+      note: '八拍でひとまわり。抜けと駆けを混ぜて',
+      pattern: [0, 1, 1.5, 2, 3.5, 4, 5.5, 6]
     }
   ];
 

@@ -193,6 +193,13 @@
   }
 
   function startRound() {
+    /* 残り2人なら、相手はもう限界だ */
+    if (W.aliveCount() === 2) {
+      for (var fi = 0; fi < W.walkers.length; fi++) {
+        var fw = W.walkers[fi];
+        if (fw.alive && !fw.isPlayer) fw.finalDuel = true;
+      }
+    }
     R = buildRound(roundIdx);
     /* ラウンドが進むほど行進は速くなる。歩幅も背景の流れも一緒に上がり、
      * 終盤はわずかなズレが大きな距離になって見える */
@@ -345,6 +352,15 @@
   function bubbleTick(t) {
     for (var i = bubbles.length - 1; i >= 0; i--) {
       if (t > bubbles[i].until || (!bubbles[i].w.alive && !bubbles[i].keepDead)) bubbles.splice(i, 1);
+    }
+    /* 一騎打ちの相手: 走る・止まるの変わり目に、何かを漏らす */
+    for (i = 0; i < W.walkers.length; i++) {
+      var dw = W.walkers[i];
+      if (dw.finalDuel && dw.alive && dw.duelSegs && dw.duelSegs.length &&
+          t >= dw.duelSegs[0].t) {
+        dw.duelSegs.shift();
+        bubbles.push({ w: dw, text: U.pick(SW.PANIC), until: t + 1.9 });
+      }
     }
     if (t < nextBubbleAt) return;
     var pool = [];

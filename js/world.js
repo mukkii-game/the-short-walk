@@ -419,6 +419,44 @@
       tempo = 1 + w.planDevs[R.idx] / span2;
       wanderSigma *= 0.4;
     }
+
+    /* 最後の一騎打ちの相手は、もう限界が来ている。
+     * 突然走り出し、立ち止まり、また歩き出す。そのたびに何かを漏らす。
+     * 走る・止まるの予定表(duelSegs)を作っておき、吹き出しはそこに同期する */
+    if (w.finalDuel) {
+      w.duelSegs = [];
+      var stepD = W.speed * R.phraseDur / R.pattern.length;   /* 一歩の距離 */
+      var out = [];
+      var lastT = R.tGo;
+      var segIdx = 0;
+      while (lastT < R.tEnd) {
+        /* 実際に出した歩数から、いまの正確なズレを出す。
+         * 見積りで回すと誤差が蓄積して、終盤に沈んだまま戻れなくなる */
+        var devNow = out.length * stepD - W.speed * (lastT - R.tGo);
+        var mode = segIdx % 3 === 1 ? 'run' : (segIdx % 3 === 2 ? 'stop' : 'walk');
+        /* 大きく置いていかれているときは、止まらずに走って戻る */
+        if (mode === 'stop' && devNow < -1.2) mode = 'run';
+        if (mode === 'run' && devNow > 1.2) mode = 'stop';
+        var dur = mode === 'stop' ? 0.5 + Math.random() * 0.5
+                : mode === 'run' ? 1.0 + Math.random() * 1.0
+                : 2.0 + Math.random() * 2.0;
+        if (segIdx > 0) w.duelSegs.push({ t: lastT, mode: mode });
+        var rate = mode === 'run' ? 1.35 + Math.random() * 0.2
+                 : mode === 'stop' ? 0
+                 : U.clamp(1 - devNow * 0.5, 0.65, 1.4);
+        if (rate > 0.2) {
+          var interval = (R.phraseDur / R.pattern.length) / rate;
+          for (var tt = lastT; tt < Math.min(lastT + dur, R.tEnd); tt += interval) {
+            out.push({ t: tt + U.gauss(0, 0.02), k: 'R' });
+          }
+        }
+        lastT += dur;
+        segIdx++;
+      }
+      w.presses = w.presses.filter(function (pr) { return pr.t < R.tGo; }).concat(out);
+      w.presses.sort(function (a, b) { return a.t - b.t; });
+      return;
+    }
     var wander = 0;
     var phase = R.tGo;
     var endT = R.tEnd + R.phraseDur * 5;

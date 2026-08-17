@@ -636,7 +636,7 @@
     var p = screenOf(w.x, w.laneF);
     if (p.x < -120 || p.x > Wd + 120) return;
     var h = CFG.bodyH * p.ppm;
-    var fs = U.clamp(h * 0.19, 11, 30);
+    var fs = U.clamp(h * 0.19, 11, 52);
     /* 出す側は本人ごとに固定（毎フレーム揺れないように） */
     var side = (w.id % 2 === 0) ? 1 : -1;
     var headX = p.x, headY = p.y - h * 0.98;
@@ -660,11 +660,12 @@
     g.fill(); g.stroke();
 
     /* とんがり口。吹き出しの根元から本人の頭へ */
-    var rootX = U.clamp(headX + side * fs * 0.9, bx + 6, bx + bw - 6);
+    /* とんがり口。細くなりすぎないように根元を広く取る（三角は三角のまま） */
+    var rootX = U.clamp(headX + side * fs * 0.9, bx + fs * 0.6, bx + bw - fs * 0.6);
     g.beginPath();
-    g.moveTo(rootX - fs * 0.32, by + bh - 0.5);
-    g.lineTo(rootX + fs * 0.32, by + bh - 0.5);
-    g.lineTo(headX + side * fs * 0.15, headY);
+    g.moveTo(rootX - fs * 0.62, by + bh - 0.5);
+    g.lineTo(rootX + fs * 0.62, by + bh - 0.5);
+    g.lineTo(headX + side * fs * 0.12, headY);
     g.closePath();
     g.fill();
 
