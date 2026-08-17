@@ -482,6 +482,11 @@
         lastT += dur;
         segIdx++;
       }
+      /* 判決の間も歩き続ける。ここを欠かすと、判定は近い位置で取られたのに
+       * 画面では凍って置き去りに見える、という食い違いが起きる */
+      for (var ci = 0; ci < R.slotsCool.length; ci++) {
+        out.push({ t: R.slotsCool[ci].t + U.gauss(0, 0.03), k: 'R' });
+      }
       w.presses = w.presses.filter(function (pr) { return pr.t < R.tGo; }).concat(out);
       w.presses.sort(function (a, b) { return a.t - b.t; });
       return;

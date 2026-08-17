@@ -227,7 +227,9 @@
     roundEndAt = -1;
     pacerAlpha = 1;
     W.beginRound(R);
-    scheduleRoundAudio(R);
+    /* 予約を200ms遅らせる。開始直後は実音源のデコードが終わっておらず、
+     * 最初のラウンドだけ足音が合成音に落ちてしまうため（最初の拍は1秒以上先にある） */
+    (function (r2) { setTimeout(function () { scheduleRoundAudio(r2); }, 200); })(R);
     buildAuto(R);
     A.musicLevel(0.55, 0.3);
     A.ambLevel(0.16, 0.5);
@@ -454,10 +456,19 @@
     if (V.gameend) online.ended = true;
   }
 
+  var verdictPending = false;
+
   function beginVerdict(t) {
     lasers = [];
     verdictDone = -1;
-    /* 生存数を規定の列(12→8→5→3→2→1)まで削る。ズレの大きい下位から */
+    /* 判定はまだしない。ズレが確定する tHold の瞬間に、
+     * 画面に凍結された値そのもので裁く。ここで裁くと、猶予中の入力や
+     * 凍結までのわずかな時間ぶんだけ判定と見た目がずれる */
+    verdictPending = true;
+  }
+
+  function resolveVerdict(t) {
+    verdictPending = false;
     var target = SW.TARGETS[Math.min(roundIdx, SW.TARGETS.length - 1)];
     var quota = Math.max(0, W.aliveCount() - target);
     var victims = W.markVictims(1e9, quota);
@@ -625,8 +636,7 @@
           state = 'sync';
           roundEndAt = t;
           syncSince = t;
-          /* 自分のズレを1つ送るだけ。あとは歩いて待つ */
-          SW.net.sendResult(roundIdx, W.relDev(W.player));
+          online.sentResult = false;   /* 提出はズレ確定(tHold)後に1回だけ */
         } else {
           state = 'verdict';
           roundEndAt = t;
@@ -652,6 +662,10 @@
 
       /* 同期待ち: サーバの判決が来るまで歩き続ける */
       if (state === 'sync') {
+        if (online && !online.sentResult && t >= R.tHold) {
+          online.sentResult = true;
+          SW.net.sendResult(roundIdx, W.relDev(W.player));
+        }
         if (online && online.verdictQueue.length) {
           var V = online.verdictQueue.shift();
           W.applyDevs(V.devs);
@@ -664,8 +678,9 @@
         }
       }
 
-      /* 判決: レーザーが順に落ちる */
+      /* 判決: ズレの確定を待ってから、レーザーが順に落ちる */
       if (state === 'verdict') {
+        if (verdictPending && t >= R.tHold) resolveVerdict(t);
         verdictTick(t);
         if (playerDeadAt > 0 && t - playerDeadAt > 1.6) {
           endRun(false);
