@@ -129,6 +129,35 @@
       noiseBuf = makeNoise();
       ready = true;
       if (ctx.state === 'suspended') ctx.resume();
+
+      /* iOS対策。
+       * 1) WebAudioは既定で「着信音」扱いになり、サイレントスイッチONだと無音になる。
+       *    audioSession を playback にすると、メディア再生扱いになりマナーでも鳴る */
+      try {
+        if (navigator.audioSession) navigator.audioSession.type = 'playback';
+      } catch (e) { /* 未対応ブラウザ */ }
+      /* 2) 無音の<audio>を一度再生してメディアセッションを確立させる保険 */
+      try {
+        var un = document.createElement('audio');
+        un.setAttribute('playsinline', '');
+        un.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=';
+        un.volume = 0.01;
+        var pr = un.play();
+        if (pr && pr.catch) pr.catch(function () { /* 拒否されても実害なし */ });
+      } catch (e) { /* noop */ }
+      /* 3) iOSはタブ切替や着信で AudioContext が止まったまま戻ることがある。
+       *    以後の操作のたびに復帰を試みる */
+      if (!global.__swResumeHook) {
+        global.__swResumeHook = true;
+        var kick = function () {
+          if (ctx && ctx.state !== 'running') { try { ctx.resume(); } catch (e) { /* noop */ } }
+        };
+        document.addEventListener('pointerdown', kick, true);
+        document.addEventListener('keydown', kick, true);
+        document.addEventListener('visibilitychange', function () {
+          if (!document.hidden) kick();
+        });
+      }
       decodeAll();
     },
 
